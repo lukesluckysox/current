@@ -1,18 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Alert,
   Share,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
-import { getConfig, setConfig, exportAllData, clearAllData } from '../db/database';
+import { exportAllData, clearAllData } from '../db/database';
 import { Header } from '../components';
 import { RootStackParamList } from '../../App';
 
@@ -21,27 +19,6 @@ type Props = {
 };
 
 export default function SettingsScreen({ navigation }: Props) {
-  const [apiKey, setApiKey] = useState('');
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const load = useCallback(async () => {
-    const key = await getConfig('anthropic_api_key');
-    if (key) setApiKey(key);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
-
-  async function handleSaveApiKey() {
-    await setConfig('anthropic_api_key', apiKey.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
-
   async function handleExport() {
     const data = await exportAllData();
     try {
@@ -51,8 +28,8 @@ export default function SettingsScreen({ navigation }: Props) {
 
   async function handleClearData() {
     Alert.alert(
-      'Clear all data?',
-      'This will permanently remove all entries across Drift, Tide, Verso, Paradox, Terrain, and Constellation. This cannot be undone.',
+      'Clear all lines?',
+      'This will permanently remove every saved line. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -60,7 +37,7 @@ export default function SettingsScreen({ navigation }: Props) {
           style: 'destructive',
           onPress: async () => {
             await clearAllData();
-            Alert.alert('Done', 'All data has been cleared.');
+            Alert.alert('Done', 'All lines have been cleared.');
           },
         },
       ]
@@ -72,53 +49,16 @@ export default function SettingsScreen({ navigation }: Props) {
       <Header title="Settings" onBack={() => navigation.goBack()} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* API key */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>paradox generation</Text>
-          <Text style={styles.sectionNote}>
-            Paradox generation uses the Anthropic API. Add your key here — it stays on this device only.
-          </Text>
-          <View style={styles.apiKeyRow}>
-            <TextInput
-              value={apiKey}
-              onChangeText={setApiKey}
-              placeholder="sk-ant-..."
-              placeholderTextColor={Colors.muted}
-              secureTextEntry={!apiKeyVisible}
-              style={styles.apiKeyInput}
-              selectionColor={Colors.amber}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity
-              onPress={() => setApiKeyVisible(!apiKeyVisible)}
-              style={styles.apiKeyToggle}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.apiKeyToggleText}>{apiKeyVisible ? 'hide' : 'show'}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[styles.button, !apiKey.trim() && styles.buttonDisabled]}
-            onPress={handleSaveApiKey}
-            activeOpacity={0.8}
-            disabled={!apiKey.trim()}
-          >
-            <Text style={styles.buttonText}>{saved ? 'saved ✓' : 'save key'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Data */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>your data</Text>
+          <Text style={styles.sectionLabel}>your lines</Text>
           <Text style={styles.sectionNote}>
             Everything lives on this device. No account, no cloud, no sync.
           </Text>
 
           <TouchableOpacity style={styles.actionRow} onPress={handleExport} activeOpacity={0.75}>
             <View>
-              <Text style={styles.actionTitle}>Export all entries</Text>
-              <Text style={styles.actionSubtitle}>plain text, all instruments</Text>
+              <Text style={styles.actionTitle}>Export all lines</Text>
+              <Text style={styles.actionSubtitle}>plain text, with tags</Text>
             </View>
             <Text style={styles.actionArrow}>↑</Text>
           </TouchableOpacity>
@@ -132,16 +72,24 @@ export default function SettingsScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        {/* About */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>about swell</Text>
           <Text style={styles.aboutText}>
-            Swell is a pocket creative instrument where passing states, shifting conditions, and relational atmospheres become lines worth keeping.
+            Swell is a pocket creative instrument for catching a fragment, shaping
+            a line, and keeping the ones worth keeping.
           </Text>
           <Text style={styles.aboutText}>
-            Terrain reads the condition. Constellation reads the field. Tide, Drift, Verso, and Paradox turn those readings into language.
+            Drift catches the raw thing. Verso shapes it — completing,
+            distilling, inverting, or turning it into a paradox. Tide, terrain,
+            and constellation are light tags you can add to any line.
           </Text>
-          <Text style={styles.version}>v1.0</Text>
+          <Text style={styles.aboutText}>
+            On-device AI generation has been removed in this version: it
+            previously required exposing an API key client-side, which is not
+            safe. Manual shaping (paradox, distill, aphorism, invert) is fully
+            available.
+          </Text>
+          <Text style={styles.version}>v1.1 — line-first</Text>
         </View>
 
         <View style={styles.bottomPad} />
@@ -174,46 +122,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     lineHeight: 22,
     marginBottom: Spacing.md,
-  },
-  apiKeyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.sm,
-    marginBottom: Spacing.md,
-    backgroundColor: Colors.card,
-  },
-  apiKeyInput: {
-    flex: 1,
-    color: Colors.saltWhite,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.sm,
-    padding: Spacing.md,
-  },
-  apiKeyToggle: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  apiKeyToggleText: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-  },
-  button: {
-    backgroundColor: Colors.amber,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.xl,
-    alignItems: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  buttonText: {
-    color: Colors.deepNavy,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
   },
   actionRow: {
     flexDirection: 'row',

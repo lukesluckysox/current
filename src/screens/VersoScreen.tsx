@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,33 +7,25 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  Animated,
   KeyboardAvoidingView,
   Platform,
-  Share,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius, VERSO_TEMPLATES } from '../theme';
 import {
-  getVersoEntries,
-  addVersoEntry,
-  toggleVersoFavorite,
-  deleteVersoEntry,
-  addCustomTemplate,
-  getCustomTemplates,
-  VersoEntry,
+  Colors, Fonts, FontSizes, Spacing, Radius,
+  VERSO_TEMPLATES, VERSO_MODES, VersoMode, PARADOX_TOPICS,
+} from '../theme';
+import {
+  addLine, addCustomTemplate, getCustomTemplates,
 } from '../db/database';
-import { Header, EmptyState } from '../components';
+import { Header, EmptyState, Pill } from '../components';
 import { RootStackParamList } from '../../App';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Verso'>;
+  route: RouteProp<RootStackParamList, 'Verso'>;
 };
-
-function formatDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 function parseTemplate(template: string): string[] {
   return template.split(' _ ');
@@ -44,26 +36,33 @@ function buildCompletedLine(template: string, fills: string[]): string {
   return parts.map((part, i) => (i < fills.length ? part + fills[i] : part)).join('');
 }
 
-export default function VersoScreen({ navigation }: Props) {
+export default function VersoScreen({ navigation, route }: Props) {
+  const seedContent = route.params?.seedContent;
+  const seedMode = (route.params?.seedMode as VersoMode | undefined) ?? 'complete';
+
+  const [mode, setMode] = useState<VersoMode>(seedMode);
   const [selectedTemplate, setSelectedTemplate] = useState<string>(VERSO_TEMPLATES[0]);
   const [fills, setFills] = useState<string[]>([]);
-  const [entries, setEntries] = useState<VersoEntry[]>([]);
   const [customTemplates, setCustomTemplates] = useState<string[]>([]);
   const [showCustomEntry, setShowCustomEntry] = useState(false);
   const [customTemplate, setCustomTemplate] = useState('');
-  const [view, setView] = useState<'compose' | 'collection'>('compose');
-  const saveOpacity = useRef(new Animated.Value(0)).current;
+
+  // Free-text shaping (paradox / distill / aphorism / invert)
+  const [shaped, setShaped] = useState(seedContent ?? '');
+  const [topic, setTopic] = useState<string | null>(null);
+  const [customTopic, setCustomTopic] = useState('');
+
+  useEffect(() => {
+    if (seedContent) setShaped(seedContent);
+  }, [seedContent]);
 
   const blankCount = parseTemplate(selectedTemplate).length - 1;
   const currentFills = fills.slice(0, blankCount);
   const allFilled = currentFills.length === blankCount && currentFills.every((f) => f.trim());
-  const completedLine = allFilled
-    ? buildCompletedLine(selectedTemplate, currentFills)
-    : null;
+  const completedLine = allFilled ? buildCompletedLine(selectedTemplate, currentFills) : null;
 
   const load = useCallback(async () => {
-    const [data, custom] = await Promise.all([getVersoEntries(), getCustomTemplates()]);
-    setEntries(data);
+    const custom = await getCustomTemplates();
     setCustomTemplates(custom.map((c) => c.template));
   }, []);
 
@@ -85,12 +84,29 @@ export default function VersoScreen({ navigation }: Props) {
     setFills(next);
   }
 
-  async function handleSave() {
+  async function handleSaveComplete() {
     if (!completedLine) return;
-    await addVersoEntry(selectedTemplate, completedLine);
+    await addLine({
+      content: completedLine,
+      mode: 'complete',
+      template: selectedTemplate,
+    });
     setFills([]);
-    setView('collection');
-    await load();
+    navigation.navigate('Lines');
+  }
+
+  async function handleSaveShaped() {
+    if (!shaped.trim()) return;
+    const t = customTopic.trim() || topic;
+    await addLine({
+      content: shaped.trim(),
+      mode,
+      topic: t ?? null,
+    });
+    setShaped('');
+    setTopic(null);
+    setCustomTopic('');
+    navigation.navigate('Lines');
   }
 
   async function handleSaveCustomTemplate() {
@@ -106,32 +122,12 @@ export default function VersoScreen({ navigation }: Props) {
     await load();
   }
 
-  async function handleToggleFavorite(entry: VersoEntry) {
-    await toggleVersoFavorite(entry.id, entry.is_favorite === 0);
-    await load();
-  }
+  const allTemplates = useMemo(
+    () => [...VERSO_TEMPLATES, ...customTemplates],
+    [customTemplates]
+  );
 
-  async function handleDelete(id: number) {
-    Alert.alert('Remove this line?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteVersoEntry(id);
-          await load();
-        },
-      },
-    ]);
-  }
-
-  async function handleShare(line: string) {
-    try {
-      await Share.share({ message: line });
-    } catch {}
-  }
-
-  const allTemplates = [...VERSO_TEMPLATES, ...customTemplates];
+  const modeMeta = VERSO_MODES.find((m) => m.id === mode)!;
 
   return (
     <KeyboardAvoidingView
@@ -143,169 +139,208 @@ export default function VersoScreen({ navigation }: Props) {
         onBack={() => navigation.goBack()}
         rightAction={
           <TouchableOpacity
-            onPress={() => setView(view === 'compose' ? 'collection' : 'compose')}
+            onPress={() => navigation.navigate('Lines')}
             activeOpacity={0.7}
           >
-            <Text style={styles.viewToggle}>{view === 'compose' ? '≡' : '✦'}</Text>
+            <Text style={styles.headerIcon}>≡</Text>
           </TouchableOpacity>
         }
       />
 
-      {view === 'compose' ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Template selector */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>choose a template</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
-              {allTemplates.map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.templateChip, selectedTemplate === t && styles.templateChipActive]}
-                  onPress={() => selectTemplate(t)}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[styles.templateChipText, selectedTemplate === t && styles.templateChipTextActive]}
-                    numberOfLines={1}
-                  >
-                    {t}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Mode selector */}
+        <View style={styles.modeRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {VERSO_MODES.map((m) => (
               <TouchableOpacity
-                style={styles.templateChip}
-                onPress={() => setShowCustomEntry(!showCustomEntry)}
+                key={m.id}
+                style={[styles.modeTab, mode === m.id && styles.modeTabActive]}
+                onPress={() => setMode(m.id)}
                 activeOpacity={0.75}
               >
-                <Text style={styles.templateChipText}>+ write your own</Text>
+                <Text style={[styles.modeTabText, mode === m.id && styles.modeTabTextActive]}>
+                  {m.label}
+                </Text>
               </TouchableOpacity>
-            </ScrollView>
+            ))}
+          </ScrollView>
+        </View>
+        <Text style={styles.modeHint}>{modeMeta.hint}</Text>
 
-            {showCustomEntry && (
-              <View style={styles.customTemplateRow}>
-                <TextInput
-                  value={customTemplate}
-                  onChangeText={setCustomTemplate}
-                  placeholder="Use _ for blanks (e.g. _ is the price of _)"
-                  placeholderTextColor={Colors.muted}
-                  style={styles.customTemplateInput}
-                  selectionColor={Colors.amber}
-                  autoFocus
-                />
-                <TouchableOpacity
-                  onPress={handleSaveCustomTemplate}
-                  style={styles.miniButton}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.miniButtonText}>add</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Fill-in area */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>fill the blanks</Text>
-            <Text style={styles.templateDisplay}>
-              {parseTemplate(selectedTemplate).map((part, i) => (
-                <React.Fragment key={i}>
-                  <Text style={styles.templatePart}>{part}</Text>
-                  {i < blankCount && (
-                    <Text style={[styles.templateBlank, currentFills[i]?.trim() && styles.templateBlankFilled]}>
-                      {currentFills[i]?.trim() || '___'}
+        {mode === 'complete' ? (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>choose a template</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
+                {allTemplates.map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.templateChip, selectedTemplate === t && styles.templateChipActive]}
+                    onPress={() => selectTemplate(t)}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[styles.templateChipText, selectedTemplate === t && styles.templateChipTextActive]}
+                      numberOfLines={1}
+                    >
+                      {t}
                     </Text>
-                  )}
-                </React.Fragment>
-              ))}
-            </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.templateChip}
+                  onPress={() => setShowCustomEntry(!showCustomEntry)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.templateChipText}>+ write your own</Text>
+                </TouchableOpacity>
+              </ScrollView>
 
-            <View style={styles.fillInputs}>
-              {Array.from({ length: blankCount }).map((_, i) => (
-                <View key={i} style={styles.fillRow}>
-                  <Text style={styles.fillLabel}>{i + 1}</Text>
+              {showCustomEntry && (
+                <View style={styles.customTemplateRow}>
                   <TextInput
-                    value={fills[i] ?? ''}
-                    onChangeText={(v) => setFill(i, v)}
-                    placeholder={`blank ${i + 1}`}
+                    value={customTemplate}
+                    onChangeText={setCustomTemplate}
+                    placeholder="Use _ for blanks (e.g. _ is the price of _)"
                     placeholderTextColor={Colors.muted}
-                    style={styles.fillInput}
+                    style={styles.customTemplateInput}
                     selectionColor={Colors.amber}
-                    autoCorrect={false}
+                    autoFocus
                   />
+                  <TouchableOpacity
+                    onPress={handleSaveCustomTemplate}
+                    style={styles.miniButton}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.miniButtonText}>add</Text>
+                  </TouchableOpacity>
                 </View>
-              ))}
+              )}
             </View>
 
-            {completedLine && (
-              <View style={styles.preview}>
-                <Text style={styles.previewLabel}>completed line</Text>
-                <Text style={styles.previewLine}>{completedLine}</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>fill the blanks</Text>
+              <Text style={styles.templateDisplay}>
+                {parseTemplate(selectedTemplate).map((part, i) => (
+                  <React.Fragment key={i}>
+                    <Text style={styles.templatePart}>{part}</Text>
+                    {i < blankCount && (
+                      <Text style={[styles.templateBlank, currentFills[i]?.trim() && styles.templateBlankFilled]}>
+                        {currentFills[i]?.trim() || '___'}
+                      </Text>
+                    )}
+                  </React.Fragment>
+                ))}
+              </Text>
+
+              <View style={styles.fillInputs}>
+                {Array.from({ length: blankCount }).map((_, i) => (
+                  <View key={i} style={styles.fillRow}>
+                    <Text style={styles.fillLabel}>{i + 1}</Text>
+                    <TextInput
+                      value={fills[i] ?? ''}
+                      onChangeText={(v) => setFill(i, v)}
+                      placeholder={`blank ${i + 1}`}
+                      placeholderTextColor={Colors.muted}
+                      style={styles.fillInput}
+                      selectionColor={Colors.amber}
+                      autoCorrect={false}
+                    />
+                  </View>
+                ))}
+              </View>
+
+              {completedLine && (
+                <View style={styles.preview}>
+                  <Text style={styles.previewLabel}>completed line</Text>
+                  <Text style={styles.previewLine}>{completedLine}</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.saveButton, !allFilled && styles.saveButtonDisabled]}
+                onPress={handleSaveComplete}
+                activeOpacity={0.8}
+                disabled={!allFilled}
+              >
+                <Text style={styles.saveButtonText}>save line</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <View style={styles.section}>
+            {/* Shaping modes (paradox / distill / aphorism / invert): a single
+                free-text canvas. Topic chips appear for paradox. */}
+
+            {seedContent && (
+              <View style={styles.seedBanner}>
+                <Text style={styles.seedLabel}>shaping fragment</Text>
+                <Text style={styles.seedText}>{seedContent}</Text>
               </View>
             )}
 
-            <TouchableOpacity
-              style={[styles.saveButton, !allFilled && styles.saveButtonDisabled]}
-              onPress={handleSave}
-              activeOpacity={0.8}
-              disabled={!allFilled}
-            >
-              <Text style={styles.saveButtonText}>save to collection</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.bottomPad} />
-        </ScrollView>
-      ) : (
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={styles.section}>
-            {entries.length === 0 ? (
-              <EmptyState
-                title="no lines saved yet"
-                subtitle="complete a template to build your collection"
-              />
-            ) : (
-              entries.map((entry) => (
-                <View key={entry.id} style={styles.collectionEntry}>
-                  <Text style={styles.collectionLine}>{entry.completed_line}</Text>
-                  <Text style={styles.collectionTemplate}>{entry.template}</Text>
-                  <View style={styles.collectionMeta}>
-                    <Text style={styles.collectionDate}>{formatDate(entry.created_at)}</Text>
-                    <View style={styles.collectionActions}>
-                      <TouchableOpacity
-                        onPress={() => handleToggleFavorite(entry)}
-                        style={styles.actionButton}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.actionIcon, entry.is_favorite === 1 && styles.favoriteActive]}>
-                          ★
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleShare(entry.completed_line)}
-                        style={styles.actionButton}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.actionIcon}>↑</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDelete(entry.id)}
-                        style={styles.actionButton}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.actionIcon}>×</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+            {mode === 'paradox' && (
+              <>
+                <Text style={styles.sectionLabel}>choose a topic (optional)</Text>
+                <View style={styles.topicGrid}>
+                  {PARADOX_TOPICS.map((t) => (
+                    <Pill
+                      key={t}
+                      label={t}
+                      active={topic === t}
+                      onPress={() => { setTopic(topic === t ? null : t); setCustomTopic(''); }}
+                    />
+                  ))}
                 </View>
-              ))
+                <TextInput
+                  value={customTopic}
+                  onChangeText={(t) => { setCustomTopic(t); setTopic(null); }}
+                  placeholder="or name your own topic"
+                  placeholderTextColor={Colors.muted}
+                  style={styles.customTopicInput}
+                  selectionColor={Colors.amber}
+                />
+              </>
             )}
+
+            <Text style={styles.sectionLabel}>{modeMeta.label}</Text>
+            <TextInput
+              value={shaped}
+              onChangeText={(t) => setShaped(t.slice(0, 280))}
+              placeholder={
+                mode === 'paradox' ? 'a truth that undoes itself…' :
+                mode === 'distill' ? 'shorter, truer…' :
+                mode === 'aphorism' ? 'one line, sharpened…' :
+                'flip it…'
+              }
+              placeholderTextColor={Colors.muted}
+              style={styles.writeInput}
+              multiline
+              selectionColor={Colors.amber}
+              autoCorrect={false}
+            />
+
+            <View style={styles.saveRow}>
+              <Text style={styles.charCount}>
+                {shaped.length > 0 ? 280 - shaped.length : ''}
+              </Text>
+              <TouchableOpacity
+                style={[styles.saveButton, !shaped.trim() && styles.saveButtonDisabled]}
+                onPress={handleSaveShaped}
+                activeOpacity={0.8}
+                disabled={!shaped.trim()}
+              >
+                <Text style={styles.saveButtonText}>keep it</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.bottomPad} />
-        </ScrollView>
-      )}
+        )}
+
+        <View style={styles.bottomPad} />
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -315,15 +350,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.deepNavy,
   },
-  viewToggle: {
+  headerIcon: {
     color: Colors.sand,
     fontSize: FontSizes.xl,
     fontFamily: Fonts.sans,
   },
-  section: {
-    padding: Spacing.lg,
+  modeRow: {
+    flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  modeTab: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  modeTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.amber,
+  },
+  modeTabText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
+  },
+  modeTabTextActive: {
+    color: Colors.saltWhite,
+  },
+  modeHint: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+  },
+  section: {
+    padding: Spacing.lg,
   },
   sectionLabel: {
     color: Colors.muted,
@@ -451,11 +513,64 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xl,
     lineHeight: 32,
   },
+  seedBanner: {
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.amber,
+    paddingLeft: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  seedLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
+  seedText: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.lg,
+    lineHeight: 28,
+  },
+  topicGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: Spacing.md,
+  },
+  customTopicInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    color: Colors.saltWhite,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.lg,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  writeInput: {
+    color: Colors.saltWhite,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.xl,
+    lineHeight: 34,
+    minHeight: 120,
+    marginBottom: Spacing.md,
+    textAlignVertical: 'top',
+  },
+  saveRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  charCount: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+  },
   saveButton: {
     backgroundColor: Colors.amber,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     borderRadius: Radius.xl,
-    alignItems: 'center',
   },
   saveButtonDisabled: {
     opacity: 0.4,
@@ -463,51 +578,8 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: Colors.deepNavy,
     fontFamily: Fonts.sans,
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-  },
-  collectionEntry: {
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  collectionLine: {
-    color: Colors.saltWhite,
-    fontFamily: Fonts.serif,
-    fontSize: FontSizes.xl,
-    lineHeight: 32,
-    marginBottom: Spacing.xs,
-  },
-  collectionTemplate: {
-    color: Colors.muted,
-    fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.sm,
-    marginBottom: Spacing.sm,
-  },
-  collectionMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  collectionDate: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-  },
-  collectionActions: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  actionButton: {
-    padding: Spacing.xs,
-  },
-  actionIcon: {
-    color: Colors.muted,
-    fontSize: FontSizes.lg,
-    fontFamily: Fonts.sans,
-  },
-  favoriteActive: {
-    color: Colors.amber,
+    fontWeight: '600',
   },
   bottomPad: {
     height: 48,

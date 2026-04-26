@@ -98,3 +98,26 @@ export const PARADOX_TOPICS = [
 
 export const DRIFT_TAGS = ['thought', 'verse', 'paradox', 'idea', 'line'] as const;
 export type DriftTag = typeof DRIFT_TAGS[number];
+
+// Light context hints attached to a line — Terrain is no longer a system,
+// just a one-word interior-weather tag.
+export const TERRAIN_HINTS = [
+  'still',
+  'restless',
+  'open',
+  'narrow',
+  'tender',
+  'sharp',
+  'porous',
+  'hardened',
+];
+
+// Verso shaping modes. Paradox is now folded in here as one of the modes.
+export const VERSO_MODES = [
+  { id: 'complete', label: 'complete', hint: 'fill the blanks' },
+  { id: 'paradox',  label: 'paradox',  hint: 'a truth that undoes itself' },
+  { id: 'distill',  label: 'distill',  hint: 'shorter, truer' },
+  { id: 'aphorism', label: 'aphorism', hint: 'a single line, sharpened' },
+  { id: 'invert',   label: 'invert',   hint: 'flip it on its head' },
+] as const;
+export type VersoMode = typeof VERSO_MODES[number]['id'];

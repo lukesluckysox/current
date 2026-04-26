@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,50 +8,48 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius, DRIFT_TAGS, DriftTag } from '../theme';
 import {
-  getDriftEntries,
-  addDriftEntry,
-  deleteDriftEntry,
-  getRandomDriftEntry,
-  DriftEntry,
+  Colors, Fonts, FontSizes, Spacing, Radius,
+  TIDE_STATES, TERRAIN_HINTS,
+} from '../theme';
+import {
+  addLine, getRandomLine, Line,
 } from '../db/database';
-import { Header, SwellInput, EmptyState, Pill } from '../components';
+import { Header, SwellInput } from '../components';
 import { RootStackParamList } from '../../App';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Drift'>;
 };
 
-function formatDate(ts: number): string {
-  const d = new Date(ts * 1000);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
+type Sheet = 'tide' | 'terrain' | 'constellation' | null;
 
 export default function DriftScreen({ navigation }: Props) {
   const [content, setContent] = useState('');
-  const [tag, setTag] = useState<DriftTag>('thought');
-  const [entries, setEntries] = useState<DriftEntry[]>([]);
-  const [surfaced, setSurfaced] = useState<DriftEntry | null>(null);
+  const [tide, setTide] = useState<string | null>(null);
+  const [terrain, setTerrain] = useState<string | null>(null);
+  const [constellation, setConstellation] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [surfaced, setSurfaced] = useState<Line | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
-    const data = await getDriftEntries();
-    setEntries(data);
-    if (data.length > 1 && Math.random() < 0.4) {
-      const r = await getRandomDriftEntry();
+    if (Math.random() < 0.4) {
+      const r = await getRandomLine();
       setSurfaced(r);
+      surfacedOpacity.setValue(0);
       Animated.timing(surfacedOpacity, {
         toValue: 1,
         duration: 1200,
         useNativeDriver: true,
       }).start();
     }
-  }, []);
+  }, [surfacedOpacity]);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,23 +59,24 @@ export default function DriftScreen({ navigation }: Props) {
 
   async function handleSave() {
     if (!content.trim()) return;
-    await addDriftEntry(content.trim(), tag);
+    await addLine({
+      content: content.trim(),
+      mode: 'fragment',
+      tide,
+      terrain,
+      constellation,
+    });
     setContent('');
-    await load();
+    setTide(null);
+    setTerrain(null);
+    setConstellation(null);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1200);
   }
 
-  async function handleDelete(id: number) {
-    Alert.alert('Remove fragment?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteDriftEntry(id);
-          await load();
-        },
-      },
-    ]);
+  function shapeInVerso() {
+    if (!content.trim()) return;
+    navigation.navigate('Verso', { seedContent: content.trim() });
   }
 
   const remaining = 200 - content.length;
@@ -87,15 +86,25 @@ export default function DriftScreen({ navigation }: Props) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Header title="Drift" onBack={() => navigation.goBack()} />
+      <Header
+        title="Swell"
+        rightAction={
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Lines')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.headerIcon}>≡</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         style={styles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Capture area */}
         <View style={styles.captureArea}>
+          <Text style={styles.driftLabel}>drift</Text>
           <SwellInput
             value={content}
             onChangeText={setContent}
@@ -105,17 +114,69 @@ export default function DriftScreen({ navigation }: Props) {
             style={styles.captureInput}
             containerStyle={styles.captureInputContainer}
             autoCorrect={false}
+            autoFocus
           />
-          <View style={styles.captureFooter}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagRow}>
-              {DRIFT_TAGS.map((t) => (
-                <Pill key={t} label={t} active={tag === t} onPress={() => setTag(t)} />
-              ))}
-            </ScrollView>
-            <View style={styles.saveRow}>
-              <Text style={styles.charCount}>{remaining}</Text>
+
+          {/* Optional context chips */}
+          <View style={styles.chipRow}>
+            <ContextChip
+              label={tide ?? 'tide'}
+              active={!!tide}
+              onPress={() => setSheet(sheet === 'tide' ? null : 'tide')}
+              onClear={tide ? () => setTide(null) : undefined}
+            />
+            <ContextChip
+              label={terrain ?? 'terrain'}
+              active={!!terrain}
+              onPress={() => setSheet(sheet === 'terrain' ? null : 'terrain')}
+              onClear={terrain ? () => setTerrain(null) : undefined}
+            />
+            <ContextChip
+              label={constellation ? `with ${constellation}` : 'with'}
+              active={!!constellation}
+              onPress={() => setSheet(sheet === 'constellation' ? null : 'constellation')}
+              onClear={constellation ? () => setConstellation(null) : undefined}
+            />
+          </View>
+
+          {sheet === 'tide' && (
+            <BottomSheet
+              title="state of the water"
+              options={TIDE_STATES}
+              selected={tide}
+              onSelect={(v) => { setTide(v); setSheet(null); }}
+            />
+          )}
+          {sheet === 'terrain' && (
+            <BottomSheet
+              title="interior weather"
+              options={TERRAIN_HINTS}
+              selected={terrain}
+              onSelect={(v) => { setTerrain(v); setSheet(null); }}
+            />
+          )}
+          {sheet === 'constellation' && (
+            <ConstellationSheet
+              value={constellation}
+              onConfirm={(name) => { setConstellation(name); setSheet(null); }}
+            />
+          )}
+
+          <View style={styles.actionRow}>
+            <Text style={styles.charCount}>
+              {savedFlash ? 'kept ✓' : (content.length > 0 ? remaining : '')}
+            </Text>
+            <View style={styles.actionButtons}>
               <TouchableOpacity
-                style={[styles.saveButton, !content.trim() && styles.saveButtonDisabled]}
+                style={[styles.shapeButton, !content.trim() && styles.disabled]}
+                onPress={shapeInVerso}
+                activeOpacity={0.8}
+                disabled={!content.trim()}
+              >
+                <Text style={styles.shapeButtonText}>shape →</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, !content.trim() && styles.disabled]}
                 onPress={handleSave}
                 activeOpacity={0.8}
                 disabled={!content.trim()}
@@ -126,42 +187,114 @@ export default function DriftScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Resurfaced */}
         {surfaced && (
           <Animated.View style={[styles.surfaced, { opacity: surfacedOpacity }]}>
+            <Text style={styles.surfacedLabel}>resurfaced</Text>
             <Text style={styles.surfacedContent}>{surfaced.content}</Text>
           </Animated.View>
         )}
 
-        {/* Collection */}
-        <View style={styles.collection}>
-          {entries.length === 0 ? (
-            <EmptyState
-              title="nothing caught yet"
-              subtitle="fragments arrive when you're not looking for them"
-            />
-          ) : (
-            entries.map((entry) => (
-              <TouchableOpacity
-                key={entry.id}
-                style={styles.entry}
-                onLongPress={() => handleDelete(entry.id)}
-                activeOpacity={0.9}
-                delayLongPress={600}
-              >
-                <Text style={styles.entryContent}>{entry.content}</Text>
-                <View style={styles.entryMeta}>
-                  <Text style={styles.entryTag}>{entry.tag}</Text>
-                  <Text style={styles.entryDate}>{formatDate(entry.created_at)}</Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Lines')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.footerLink}>all lines</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Verso')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.footerLink}>verso</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.footerLink}>settings</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.bottomPad} />
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function ContextChip({
+  label, active, onPress, onClear,
+}: { label: string; active: boolean; onPress: () => void; onClear?: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.chip, active && styles.chipActive]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      {onClear && (
+        <TouchableOpacity onPress={onClear} hitSlop={8} style={styles.chipClear}>
+          <Text style={[styles.chipText, active && styles.chipTextActive]}>×</Text>
+        </TouchableOpacity>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function BottomSheet({
+  title, options, selected, onSelect,
+}: {
+  title: string;
+  options: readonly string[];
+  selected: string | null;
+  onSelect: (v: string) => void;
+}) {
+  return (
+    <View style={styles.sheet}>
+      <Text style={styles.sheetTitle}>{title}</Text>
+      <View style={styles.sheetOptions}>
+        {options.map((o) => (
+          <TouchableOpacity
+            key={o}
+            onPress={() => onSelect(o)}
+            style={[styles.sheetOption, selected === o && styles.sheetOptionActive]}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.sheetOptionText, selected === o && styles.sheetOptionTextActive]}>
+              {o}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function ConstellationSheet({
+  value, onConfirm,
+}: { value: string | null; onConfirm: (v: string) => void }) {
+  const [name, setName] = useState(value ?? '');
+  return (
+    <View style={styles.sheet}>
+      <Text style={styles.sheetTitle}>who's in this</Text>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder="a name, a relation, a presence"
+        placeholderTextColor={Colors.muted}
+        style={styles.sheetInput}
+        selectionColor={Colors.amber}
+        autoFocus
+        onSubmitEditing={() => name.trim() && onConfirm(name.trim())}
+      />
+      <TouchableOpacity
+        style={[styles.sheetConfirm, !name.trim() && styles.disabled]}
+        onPress={() => name.trim() && onConfirm(name.trim())}
+        disabled={!name.trim()}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.sheetConfirmText}>tag</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -173,10 +306,21 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  headerIcon: {
+    color: Colors.sand,
+    fontSize: FontSizes.xl,
+    fontFamily: Fonts.sans,
+  },
+  driftLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
   captureArea: {
     padding: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   captureInputContainer: {
     borderColor: Colors.borderLight,
@@ -185,22 +329,128 @@ const styles = StyleSheet.create({
   captureInput: {
     fontSize: FontSizes.xl,
     lineHeight: 32,
-    minHeight: 80,
+    minHeight: 100,
   },
-  captureFooter: {
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     marginTop: Spacing.md,
   },
-  tagRow: {
+  chip: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginRight: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  saveRow: {
+  chipActive: {
+    backgroundColor: Colors.amber + '22',
+    borderColor: Colors.amber,
+  },
+  chipText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+  },
+  chipTextActive: {
+    color: Colors.sandLight,
+  },
+  chipClear: {
+    marginLeft: Spacing.xs,
+  },
+  sheet: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  sheetTitle: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  sheetOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  sheetOption: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginRight: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  sheetOptionActive: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber,
+  },
+  sheetOptionText: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+  },
+  sheetOptionTextActive: {
+    color: Colors.deepNavy,
+    fontFamily: Fonts.serif,
+  },
+  sheetInput: {
+    color: Colors.saltWhite,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  sheetConfirm: {
+    alignSelf: 'flex-end',
+    backgroundColor: Colors.amber,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+  },
+  sheetConfirmText: {
+    color: Colors.deepNavy,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+  },
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: Spacing.md,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
   charCount: {
     color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+  },
+  shapeButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  shapeButtonText: {
+    color: Colors.sand,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.sm,
   },
@@ -210,14 +460,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderRadius: Radius.xl,
   },
-  saveButtonDisabled: {
-    opacity: 0.4,
-  },
   saveButtonText: {
     color: Colors.deepNavy,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.sm,
     fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.4,
   },
   surfaced: {
     margin: Spacing.lg,
@@ -225,44 +475,36 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: Colors.amber,
   },
+  surfacedLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
   surfacedContent: {
     color: Colors.sandLight,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.xl,
     lineHeight: 32,
   },
-  collection: {
-    paddingHorizontal: Spacing.lg,
-  },
-  entry: {
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  entryContent: {
-    color: Colors.saltWhite,
-    fontFamily: Fonts.serif,
-    fontSize: FontSizes.lg,
-    lineHeight: 28,
-    marginBottom: Spacing.xs,
-  },
-  entryMeta: {
+  footer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    marginTop: Spacing.xl,
   },
-  entryTag: {
+  footerLink: {
     color: Colors.muted,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.xs,
-    letterSpacing: 1,
+    letterSpacing: 2,
     textTransform: 'uppercase',
   },
-  entryDate: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-  },
   bottomPad: {
-    height: 48,
+    height: 32,
   },
 });

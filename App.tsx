@@ -13,23 +13,15 @@ import {
 import { Colors, Fonts } from './src/theme';
 import { initDatabase } from './src/db/database';
 
-import InstrumentSelector from './src/screens/InstrumentSelector';
 import DriftScreen from './src/screens/DriftScreen';
-import TideScreen from './src/screens/TideScreen';
 import VersoScreen from './src/screens/VersoScreen';
-import ParadoxScreen from './src/screens/ParadoxScreen';
-import TerrainScreen from './src/screens/TerrainScreen';
-import ConstellationScreen from './src/screens/ConstellationScreen';
+import LinesScreen from './src/screens/LinesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
 export type RootStackParamList = {
-  Selector: undefined;
   Drift: undefined;
-  Tide: undefined;
-  Verso: undefined;
-  Paradox: undefined;
-  Terrain: undefined;
-  Constellation: undefined;
+  Verso: { seedContent?: string; seedMode?: string } | undefined;
+  Lines: undefined;
   Settings: undefined;
 };
 
@@ -88,20 +80,16 @@ export default function App() {
     <NavigationContainer theme={NAV_THEME}>
       <StatusBar barStyle="light-content" />
       <Stack.Navigator
-        initialRouteName="Selector"
+        initialRouteName="Drift"
         screenOptions={{
           headerShown: false,
           animation: 'fade',
           contentStyle: { backgroundColor: Colors.deepNavy },
         }}
       >
-        <Stack.Screen name="Selector" component={InstrumentSelector} />
         <Stack.Screen name="Drift" component={DriftScreen} />
-        <Stack.Screen name="Tide" component={TideScreen} />
         <Stack.Screen name="Verso" component={VersoScreen} />
-        <Stack.Screen name="Paradox" component={ParadoxScreen} />
-        <Stack.Screen name="Terrain" component={TerrainScreen} />
-        <Stack.Screen name="Constellation" component={ConstellationScreen} />
+        <Stack.Screen name="Lines" component={LinesScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>

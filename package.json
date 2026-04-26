@@ -12,7 +12,6 @@
     "deploy": "npm run build:web && npm run serve"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.91.1",
     "@expo-google-fonts/cormorant-garamond": "^0.4.1",
     "@expo/metro-runtime": "~6.1.2",
     "@react-navigation/bottom-tabs": "^7.15.10",
