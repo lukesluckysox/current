@@ -41,5 +41,8 @@
       "react-dom": "$react-dom"
     }
   },
+  "engines": {
+    "node": ">=20"
+  },
   "private": true
 }
