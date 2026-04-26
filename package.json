@@ -35,5 +35,11 @@
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },
+  "overrides": {
+    "react-native-web": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
   "private": true
 }
