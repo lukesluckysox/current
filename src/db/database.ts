@@ -277,6 +277,10 @@ export async function getRandomLine(): Promise<Line | null> {
   return db.getFirstAsync<Line>('SELECT * FROM lines ORDER BY RANDOM() LIMIT 1');
 }
 
+export async function getLineById(id: number): Promise<Line | null> {
+  return db.getFirstAsync<Line>('SELECT * FROM lines WHERE id = ?', id);
+}
+
 export async function toggleLineFavorite(id: number, isFavorite: boolean): Promise<void> {
   await db.runAsync(
     'UPDATE lines SET is_favorite = ? WHERE id = ?',

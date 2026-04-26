@@ -155,6 +155,163 @@ export function Divider() {
   return <View style={styles.divider} />;
 }
 
+// ─── TidalReading ────────────────────────────────────────────────────────────
+//
+// Small mobile-first oceanographic display for Drift/home. Deterministic,
+// local: it reads the current hour and (optionally) a recent tide tag and
+// renders a tide gauge + waterline + a poetic sentence. No analytics, no
+// charting libraries.
+
+type TidalReadingProps = {
+  recentTide?: string | null;
+  testID?: string;
+};
+
+const READING_PHRASES: Record<string, string[]> = {
+  rising:  ['the water is rising', 'a slow lift in the line', 'the tide gathers'],
+  falling: ['the water is pulling back', 'the line goes long', 'a small retreat'],
+  high:    ['the bay is full', 'glass at the brim', 'high water holds'],
+  low:     ['the floor shows', 'low water, soft sand', 'the bones of the bay are visible'],
+  slack:   ['the water is paused', 'between two breaths', 'still, before it turns'],
+};
+
+function computeReading(now: Date, recentTide?: string | null) {
+  // 12.42-hour deterministic synthetic tide (one full cycle ~ semidiurnal).
+  // We don't model real tides — we model a *reading*. The user's local hour
+  // gives a stable position-in-cycle that changes slowly through the day.
+  const hours = now.getHours() + now.getMinutes() / 60;
+  const phase = (hours % 12.42) / 12.42; // 0..1
+  const level = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5; // 0..1
+
+  let label: keyof typeof READING_PHRASES;
+  if (level > 0.78) label = 'high';
+  else if (level < 0.22) label = 'low';
+  else {
+    // Rising in first half of phase, falling in second half.
+    if (phase < 0.25 || phase >= 0.75) label = 'rising';
+    else if (phase >= 0.25 && phase < 0.5) label = 'high';
+    else label = 'falling';
+  }
+
+  // If user recently tagged with "dead calm" or "glass water", lean into slack.
+  if (recentTide && /dead calm|glass water|golden hour/.test(recentTide)) {
+    label = 'slack';
+  }
+
+  const bank = READING_PHRASES[label];
+  // Stable phrase per hour, not random per render.
+  const phrase = bank[now.getHours() % bank.length];
+  return { level, label, phrase };
+}
+
+export function TidalReading({ recentTide, testID }: TidalReadingProps) {
+  const reading = computeReading(new Date(), recentTide ?? null);
+  const fillPct = Math.round(reading.level * 100);
+
+  return (
+    <View style={tidalStyles.container} testID={testID ?? 'tidal-reading'}>
+      <View style={tidalStyles.header}>
+        <Text style={tidalStyles.label}>tidal reading</Text>
+        <Text style={tidalStyles.state}>{reading.label}</Text>
+      </View>
+
+      <View style={tidalStyles.gaugeWrap}>
+        <View style={tidalStyles.gauge}>
+          <View
+            style={[
+              tidalStyles.water,
+              { height: `${fillPct}%` },
+            ]}
+          />
+          <View style={[tidalStyles.waterline, { bottom: `${fillPct}%` }]} />
+        </View>
+        <View style={tidalStyles.ticks}>
+          {['high', 'mid', 'low'].map((t) => (
+            <Text key={t} style={tidalStyles.tickText}>{t}</Text>
+          ))}
+        </View>
+      </View>
+
+      <Text style={tidalStyles.phrase}>{reading.phrase}</Text>
+    </View>
+  );
+}
+
+const tidalStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderTopColor: Colors.border,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#0E1B2D',
+    marginBottom: Spacing.md,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: Spacing.sm,
+  },
+  label: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  state: {
+    color: Colors.amber,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.md,
+  },
+  gaugeWrap: {
+    flexDirection: 'row',
+    height: 80,
+    alignItems: 'stretch',
+    marginBottom: Spacing.sm,
+  },
+  gauge: {
+    flex: 1,
+    backgroundColor: '#0A1628',
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+  water: {
+    backgroundColor: '#2E6B8A55',
+    width: '100%',
+  },
+  waterline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: Colors.amber + 'BB',
+  },
+  ticks: {
+    width: 44,
+    marginLeft: Spacing.sm,
+    justifyContent: 'space-between',
+  },
+  tickText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+  },
+  phrase: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.md,
+    textAlign: 'center',
+  },
+});
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({

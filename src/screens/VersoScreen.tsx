@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Colors, Fonts, FontSizes, Spacing, Radius,
   VERSO_TEMPLATES, VERSO_MODES, VersoMode, PARADOX_TOPICS,
+  COMPLETE_FAMILIES, COMPLETE_TEMPLATES, CompleteFamily,
 } from '../theme';
 import {
   addLine, addCustomTemplate, getCustomTemplates,
@@ -36,6 +37,58 @@ function buildCompletedLine(template: string, fills: string[]): string {
   return parts.map((part, i) => (i < fills.length ? part + fills[i] : part)).join('');
 }
 
+// Pick a fresh template from a family, avoiding the currently-selected one if
+// possible. Deterministic-ish but not memoised, so repeated taps cycle.
+function generateTemplate(
+  family: CompleteFamily,
+  current: string | null,
+): string {
+  const bank = COMPLETE_TEMPLATES[family];
+  if (!bank || bank.length === 0) return current ?? '';
+  if (bank.length === 1) return bank[0];
+  let pick = bank[Math.floor(Math.random() * bank.length)];
+  let tries = 0;
+  while (pick === current && tries < 5) {
+    pick = bank[Math.floor(Math.random() * bank.length)];
+    tries++;
+  }
+  return pick;
+}
+
+// If a fragment or tags are present, seed the *first* blank with a
+// fragment-ish word so the generated template feels rooted in the user's
+// material. We never fill more than one blank — the user always finishes.
+function seedFillsFor(
+  template: string,
+  seedContent: string | undefined,
+  seedTopic: string | null,
+): string[] {
+  const blankCount = parseTemplate(template).length - 1;
+  if (blankCount <= 0) return [];
+  const fills: string[] = Array(blankCount).fill('');
+  const seed = (seedTopic ?? '').trim() || pickKeyword(seedContent);
+  if (seed) fills[0] = seed;
+  return fills;
+}
+
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'is', 'it',
+  'i', 'you', 'we', 'my', 'your', 'this', 'that', 'with', 'for', 'as', 'at',
+  'be', 'are', 'was', 'were', 'been', 'so', 'if', 'than', 'then', 'just',
+  'when', 'where', 'how', 'what', 'who', 'why',
+]);
+
+function pickKeyword(text: string | undefined): string {
+  if (!text) return '';
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\s']/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !STOPWORDS.has(w));
+  if (words.length === 0) return '';
+  return words[words.length - 1];
+}
+
 export default function VersoScreen({ navigation, route }: Props) {
   const seedContent = route.params?.seedContent;
   const seedMode = (route.params?.seedMode as VersoMode | undefined) ?? 'complete';
@@ -46,6 +99,7 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [customTemplates, setCustomTemplates] = useState<string[]>([]);
   const [showCustomEntry, setShowCustomEntry] = useState(false);
   const [customTemplate, setCustomTemplate] = useState('');
+  const [activeFamily, setActiveFamily] = useState<CompleteFamily>('confession');
 
   // Free-text shaping (paradox / distill / aphorism / invert)
   const [shaped, setShaped] = useState(seedContent ?? '');
@@ -75,6 +129,14 @@ export default function VersoScreen({ navigation, route }: Props) {
   function selectTemplate(t: string) {
     setSelectedTemplate(t);
     setFills([]);
+    setShowCustomEntry(false);
+  }
+
+  function handleGenerate(family: CompleteFamily = activeFamily) {
+    setActiveFamily(family);
+    const next = generateTemplate(family, selectedTemplate);
+    setSelectedTemplate(next);
+    setFills(seedFillsFor(next, seedContent, null));
     setShowCustomEntry(false);
   }
 
@@ -173,7 +235,43 @@ export default function VersoScreen({ navigation, route }: Props) {
         {mode === 'complete' ? (
           <>
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>choose a template</Text>
+              <Text style={styles.sectionLabel}>generate a blank</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.familyScroll}
+              >
+                {COMPLETE_FAMILIES.map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[styles.familyChip, activeFamily === f.id && styles.familyChipActive]}
+                    onPress={() => handleGenerate(f.id)}
+                    activeOpacity={0.75}
+                    accessibilityLabel={`generate ${f.label} template`}
+                    testID={`family-${f.id}`}
+                  >
+                    <Text style={[styles.familyChipText, activeFamily === f.id && styles.familyChipTextActive]}>
+                      {f.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={styles.generateRow}>
+                <Text style={styles.familyHint}>
+                  {COMPLETE_FAMILIES.find((f) => f.id === activeFamily)?.hint}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => handleGenerate()}
+                  style={styles.generateButton}
+                  activeOpacity={0.8}
+                  accessibilityLabel="generate new template"
+                  testID="generate-template"
+                >
+                  <Text style={styles.generateButtonText}>generate ↻</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.sectionLabel}>or choose a template</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
                 {allTemplates.map((t) => (
                   <TouchableOpacity
@@ -397,6 +495,55 @@ const styles = StyleSheet.create({
   },
   templateScroll: {
     marginBottom: Spacing.sm,
+  },
+  familyScroll: {
+    marginBottom: Spacing.sm,
+  },
+  familyChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginRight: Spacing.sm,
+  },
+  familyChipActive: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber + '22',
+  },
+  familyChipText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+  },
+  familyChipTextActive: {
+    color: Colors.sandLight,
+  },
+  generateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+  },
+  familyHint: {
+    flex: 1,
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    marginRight: Spacing.sm,
+  },
+  generateButton: {
+    backgroundColor: Colors.amber,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.xl,
+  },
+  generateButtonText: {
+    color: Colors.deepNavy,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
   templateChip: {
     paddingHorizontal: Spacing.md,

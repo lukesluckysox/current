@@ -85,6 +85,73 @@ export const VERSO_TEMPLATES = [
   'To _ is to forget that _.',
 ];
 
+// Fill-in-the-blank template families used by Verso · Complete · Generate.
+// Each family is a small bank of skeletons; Generate picks one and seeds blanks
+// from any present fragment/tags so the user always finishes the line.
+export type CompleteFamily =
+  | 'confession'
+  | 'image'
+  | 'question'
+  | 'memory'
+  | 'contradiction'
+  | 'threshold'
+  | 'return';
+
+export const COMPLETE_FAMILIES: Array<{ id: CompleteFamily; label: string; hint: string }> = [
+  { id: 'confession',    label: 'confession',    hint: 'admit something quietly' },
+  { id: 'image',         label: 'image',         hint: 'a picture in a single line' },
+  { id: 'question',      label: 'question',      hint: 'a question you can’t answer' },
+  { id: 'memory',        label: 'memory',        hint: 'a small remembered thing' },
+  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other' },
+  { id: 'threshold',     label: 'threshold',     hint: 'just before something changes' },
+  { id: 'return',        label: 'return',        hint: 'coming back to the same place' },
+];
+
+export const COMPLETE_TEMPLATES: Record<CompleteFamily, string[]> = {
+  confession: [
+    'I never told anyone that _ was really about _.',
+    'The truth is, I _ when no one is _.',
+    'I have spent _ pretending not to want _.',
+    'What I keep from _ is the part where _.',
+  ],
+  image: [
+    'A _ on the windowsill, and outside, _.',
+    'Light through _ makes the room feel like _.',
+    'The _ moves the way _ used to.',
+    'A small _ in the shape of _.',
+  ],
+  question: [
+    'What if _ is just _ in slower light?',
+    'How much of _ was always _?',
+    'Why does _ still taste like _?',
+    'When did _ become the thing I _?',
+  ],
+  memory: [
+    'I remember _ better than _.',
+    'The summer of _ smelled like _.',
+    'You said _ and I heard _.',
+    'There was a _, and then there wasn’t.',
+  ],
+  contradiction: [
+    '_ is just _ dressed up.',
+    'To want _ is to refuse _.',
+    'The closer I get to _, the more I miss _.',
+    '_ feels like freedom until it feels like _.',
+  ],
+  threshold: [
+    'The hour before _ is _.',
+    'Just before _, the world goes _.',
+    'On the edge of _, everything _.',
+    'The room held its breath, then _.',
+  ],
+  return: [
+    'I keep coming back to _, the way water keeps _.',
+    'Every road leads back to _ eventually.',
+    'I forget _, and then _ reminds me.',
+    'Some part of me is still _ in _.',
+  ],
+};
+
 export const PARADOX_TOPICS = [
   'freedom',
   'time',

@@ -16,12 +16,19 @@ import { initDatabase } from './src/db/database';
 import DriftScreen from './src/screens/DriftScreen';
 import VersoScreen from './src/screens/VersoScreen';
 import LinesScreen from './src/screens/LinesScreen';
+import LineDetailScreen from './src/screens/LineDetailScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+
+export type LineFilter = {
+  kind: 'tide' | 'terrain' | 'constellation' | 'mode' | 'topic';
+  value: string;
+};
 
 export type RootStackParamList = {
   Drift: undefined;
-  Verso: { seedContent?: string; seedMode?: string } | undefined;
-  Lines: undefined;
+  Verso: { seedContent?: string; seedMode?: string; seedLineId?: number } | undefined;
+  Lines: { filter?: LineFilter } | undefined;
+  LineDetail: { lineId: number };
   Settings: undefined;
 };
 
@@ -90,6 +97,7 @@ export default function App() {
         <Stack.Screen name="Drift" component={DriftScreen} />
         <Stack.Screen name="Verso" component={VersoScreen} />
         <Stack.Screen name="Lines" component={LinesScreen} />
+        <Stack.Screen name="LineDetail" component={LineDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>

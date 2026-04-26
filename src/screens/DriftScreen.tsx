@@ -17,9 +17,9 @@ import {
   TIDE_STATES, TERRAIN_HINTS,
 } from '../theme';
 import {
-  addLine, getRandomLine, Line,
+  addLine, getLines, getRandomLine, Line,
 } from '../db/database';
-import { Header, SwellInput } from '../components';
+import { Header, SwellInput, TidalReading } from '../components';
 import { RootStackParamList } from '../../App';
 
 type Props = {
@@ -36,9 +36,16 @@ export default function DriftScreen({ navigation }: Props) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [surfaced, setSurfaced] = useState<Line | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [recentTide, setRecentTide] = useState<string | null>(null);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
+    // Pull the most recent tide-tagged line so the tidal reading can lean
+    // into the user's last-felt water state.
+    const recent = await getLines();
+    const lastTide = recent.find((l) => l.tide)?.tide ?? null;
+    setRecentTide(lastTide);
+
     if (Math.random() < 0.4) {
       const r = await getRandomLine();
       setSurfaced(r);
@@ -187,6 +194,8 @@ export default function DriftScreen({ navigation }: Props) {
           </View>
         </View>
 
+        <TidalReading recentTide={recentTide} />
+
         {surfaced && (
           <Animated.View style={[styles.surfaced, { opacity: surfacedOpacity }]}>
             <Text style={styles.surfacedLabel}>resurfaced</Text>
@@ -199,7 +208,7 @@ export default function DriftScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('Lines')}
             activeOpacity={0.7}
           >
-            <Text style={styles.footerLink}>all lines</Text>
+            <Text style={styles.footerLink}>depth stack</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Verso')}

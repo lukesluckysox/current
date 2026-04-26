@@ -28,16 +28,16 @@ export default function SettingsScreen({ navigation }: Props) {
 
   async function handleClearData() {
     Alert.alert(
-      'Clear all lines?',
-      'This will permanently remove every saved line. This cannot be undone.',
+      'Release every line?',
+      'This will let every saved line leave the archive. This cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep', style: 'cancel' },
         {
-          text: 'Clear everything',
+          text: 'Release all',
           style: 'destructive',
           onPress: async () => {
             await clearAllData();
-            Alert.alert('Done', 'All lines have been cleared.');
+            Alert.alert('Released', 'The archive is empty.');
           },
         },
       ]
@@ -65,10 +65,10 @@ export default function SettingsScreen({ navigation }: Props) {
 
           <TouchableOpacity style={styles.actionRow} onPress={handleClearData} activeOpacity={0.75}>
             <View>
-              <Text style={[styles.actionTitle, styles.destructive]}>Clear all data</Text>
-              <Text style={styles.actionSubtitle}>cannot be undone</Text>
+              <Text style={[styles.actionTitle, styles.destructive]}>Release every line</Text>
+              <Text style={styles.actionSubtitle}>they will leave the archive</Text>
             </View>
-            <Text style={[styles.actionArrow, styles.destructive]}>×</Text>
+            <Text style={[styles.actionArrow, styles.destructive]}>↻</Text>
           </TouchableOpacity>
         </View>
 
@@ -89,7 +89,7 @@ export default function SettingsScreen({ navigation }: Props) {
             safe. Manual shaping (paradox, distill, aphorism, invert) is fully
             available.
           </Text>
-          <Text style={styles.version}>v1.1 — line-first</Text>
+          <Text style={styles.version}>v1.2 — depth stack</Text>
         </View>
 
         <View style={styles.bottomPad} />

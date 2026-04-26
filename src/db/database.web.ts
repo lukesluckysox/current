@@ -185,6 +185,10 @@ export async function getRandomLine(): Promise<Line | null> {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+export async function getLineById(id: number): Promise<Line | null> {
+  return load<Line>(KEY_LINES).find((l) => l.id === id) ?? null;
+}
+
 export async function toggleLineFavorite(id: number, isFavorite: boolean): Promise<void> {
   const items = load<Line>(KEY_LINES).map((e) =>
     e.id === id ? { ...e, is_favorite: isFavorite ? 1 : 0 } : e
