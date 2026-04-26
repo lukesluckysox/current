@@ -19,7 +19,7 @@ import {
 import {
   addLine, getLines, getRandomLine, Line,
 } from '../db/database';
-import { Header, SwellInput, TidalReading } from '../components';
+import { Header, SwellInput, WaveForecast } from '../components';
 import { RootStackParamList } from '../../App';
 
 type Props = {
@@ -37,14 +37,18 @@ export default function DriftScreen({ navigation }: Props) {
   const [surfaced, setSurfaced] = useState<Line | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [recentTide, setRecentTide] = useState<string | null>(null);
+  const [savedToday, setSavedToday] = useState(0);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
-    // Pull the most recent tide-tagged line so the tidal reading can lean
+    // Pull the most recent tide-tagged line so the inner forecast can lean
     // into the user's last-felt water state.
     const recent = await getLines();
     const lastTide = recent.find((l) => l.tide)?.tide ?? null;
     setRecentTide(lastTide);
+
+    const startOfDay = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+    setSavedToday(recent.filter((l) => l.created_at >= startOfDay).length);
 
     if (Math.random() < 0.4) {
       const r = await getRandomLine();
@@ -194,7 +198,7 @@ export default function DriftScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <TidalReading recentTide={recentTide} />
+        <WaveForecast recentTide={recentTide} savedToday={savedToday} />
 
         {surfaced && (
           <Animated.View style={[styles.surfaced, { opacity: surfacedOpacity }]}>

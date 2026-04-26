@@ -10,7 +10,7 @@ import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 import { getLines, Line, LineMode } from '../db/database';
-import { Header, EmptyState, Pill } from '../components';
+import { Header, EmptyState, Pill, TidalChart, TidalChartMarker } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 
 type Props = {
@@ -44,6 +44,21 @@ function tagsForLine(line: Line): LineFilter[] {
   if (line.topic) out.push({ kind: 'topic', value: line.topic });
   if (line.mode && line.mode !== 'fragment') out.push({ kind: 'mode', value: line.mode });
   return out;
+}
+
+// Map up to 6 most-recent lines onto the tidal chart's 0..1 x-axis.
+// "Now" sits at x = 0.5; older lines drift left toward yesterday's tide.
+function buildLineMarkers(lines: Line[]): TidalChartMarker[] {
+  const recent = lines.slice(0, 6);
+  if (recent.length === 0) return [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  const oneDay = 86400;
+  return recent.map((l) => {
+    const ageDays = Math.max(0, Math.min(1, (nowSec - l.created_at) / oneDay));
+    // 0 days old → x ≈ 0.5 (now). 1+ days old → x ≈ 0.0 (left edge).
+    const x = Math.max(0.02, Math.min(0.5, 0.5 - ageDays * 0.5));
+    return { id: l.id, x, label: l.content.slice(0, 24) };
+  });
 }
 
 function lineMatchesFilter(line: Line, f: LineFilter): boolean {
@@ -122,10 +137,10 @@ export default function LinesScreen({ navigation, route }: Props) {
       <Header title="Depth Stack" onBack={() => navigation.goBack()} />
 
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <DepthGauge
+        <TidalChart
+          markers={buildLineMarkers(filteredLines)}
           totalCount={totalCount}
-          surfaceCount={Math.min(SURFACE_COUNT, totalCount)}
-          deeperCount={Math.max(0, totalCount - SURFACE_COUNT)}
+          testID="depth-stack-chart"
         />
 
         <View style={styles.filterBar}>
@@ -225,51 +240,6 @@ export default function LinesScreen({ navigation, route }: Props) {
   );
 }
 
-// ─── Depth Gauge ─────────────────────────────────────────────────────────────
-//
-// A small oceanographic display: stacked tidal strata. The top three bands
-// glow as the surface; below, an indicator shows how many lines lie deeper.
-
-function DepthGauge({
-  totalCount, surfaceCount, deeperCount,
-}: { totalCount: number; surfaceCount: number; deeperCount: number }) {
-  const STRATA = 6;
-  return (
-    <View style={styles.gauge} accessibilityLabel="depth gauge" testID="depth-gauge">
-      <View style={styles.gaugeLabels}>
-        <Text style={styles.gaugeLabel}>surface</Text>
-        <Text style={styles.gaugeMeta}>{totalCount} held</Text>
-        <Text style={styles.gaugeLabel}>deep</Text>
-      </View>
-      <View style={styles.gaugeStrata}>
-        {Array.from({ length: STRATA }).map((_, i) => {
-          const isSurface = i === 0 && surfaceCount > 0;
-          const intensity = i / (STRATA - 1);
-          return (
-            <View
-              key={i}
-              style={[
-                styles.gaugeBand,
-                {
-                  backgroundColor: isSurface
-                    ? Colors.amber + '55'
-                    : `rgba(20, 40, 70, ${0.25 + intensity * 0.55})`,
-                  borderTopColor: i === 0 ? Colors.amber + 'AA' : Colors.border,
-                },
-              ]}
-            />
-          );
-        })}
-      </View>
-      <View style={styles.gaugeFooter}>
-        <Text style={styles.gaugeFooterText}>
-          {surfaceCount} on surface · {deeperCount} in deeper water
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function DepthBand({ label, sublabel }: { label: string; sublabel?: string }) {
   return (
     <View style={styles.band}>
@@ -335,49 +305,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
-  },
-  gauge: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
-  gaugeLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  gaugeLabel: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  gaugeMeta: {
-    color: Colors.sand,
-    fontFamily: Fonts.serifItalic,
-    fontSize: FontSizes.sm,
-  },
-  gaugeStrata: {
-    height: 56,
-    borderRadius: Radius.sm,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  gaugeBand: {
-    flex: 1,
-    borderTopWidth: 1,
-  },
-  gaugeFooter: {
-    marginTop: Spacing.xs,
-  },
-  gaugeFooterText: {
-    color: Colors.muted,
-    fontFamily: Fonts.serifItalic,
-    fontSize: FontSizes.xs,
-    textAlign: 'center',
   },
   filterBar: {
     paddingHorizontal: Spacing.md,
