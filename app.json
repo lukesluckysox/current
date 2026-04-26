@@ -24,7 +24,16 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "Swell",
+      "shortName": "Swell",
+      "description": "A pocket creative instrument for turning passing states into lines worth keeping.",
+      "backgroundColor": "#0A1628",
+      "themeColor": "#0A1628",
+      "display": "standalone",
+      "orientation": "portrait"
     },
     "plugins": [
       "expo-font",
