@@ -297,20 +297,8 @@ export function WaveForecast({
         </View>
         <View style={waveStyles.miniChartWrap}>
           <View style={waveStyles.miniChart} testID="forecast-bars">
-            {f.series.map((v, i) => {
-              const isNow = i === f.series.length - 1;
-              return (
-                <View key={i} style={waveStyles.miniBarSlot}>
-                  <View
-                    style={[
-                      waveStyles.miniBar,
-                      { height: `${Math.round(v * 100)}%` },
-                      isNow && waveStyles.miniBarNow,
-                    ]}
-                  />
-                </View>
-              );
-            })}
+            <View style={waveStyles.miniLine} />
+            <View style={waveStyles.miniNowDot} />
           </View>
           <View style={waveStyles.miniAxis}>
             <Text style={waveStyles.miniAxisText}>−24h</Text>
@@ -826,23 +814,28 @@ const waveStyles = StyleSheet.create({
     flex: 1,
   },
   miniChart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 48,
-    gap: 4,
+    height: 32,
+    position: 'relative',
+    justifyContent: 'center',
   },
-  miniBarSlot: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'flex-end',
+  miniLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 1,
+    backgroundColor: Colors.sand,
   },
-  miniBar: {
-    width: '100%',
-    borderRadius: 2,
-    backgroundColor: '#3A788066',
-  },
-  miniBarNow: {
-    backgroundColor: Colors.amber + 'CC',
+  miniNowDot: {
+    position: 'absolute',
+    top: '50%',
+    right: 0,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.amber,
+    marginTop: -3,
+    marginRight: -3,
   },
   miniAxis: {
     flexDirection: 'row',
