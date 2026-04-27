@@ -86,10 +86,20 @@ function AuthGate() {
       </View>
     );
   }
+  if (auth.status === 'unavailable') {
+    return (
+      <View style={styles.splash}>
+        <StatusBar barStyle="light-content" />
+        <Text style={styles.splashName}>Current</Text>
+        <Text style={styles.splashError}>sign-in is unavailable.</Text>
+        <Text style={styles.splashHint}>the server is missing its database connection. try again shortly.</Text>
+      </View>
+    );
+  }
   if (auth.status === 'unauthenticated') {
     return (
       <LoginScreen
-        mode={auth.canRegister ? 'register' : 'login'}
+        mode="login"
         canRegister={auth.canRegister}
         onAuthed={(user) => auth.signIn(user)}
       />
@@ -154,6 +164,14 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: 12,
     marginTop: 16,
+    fontFamily: 'System',
+  },
+  splashHint: {
+    color: Colors.muted,
+    fontSize: 12,
+    marginTop: 6,
+    paddingHorizontal: 32,
+    textAlign: 'center',
     fontFamily: 'System',
   },
 });

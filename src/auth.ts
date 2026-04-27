@@ -4,17 +4,24 @@
 // httpOnly cookies set by the server, so we just include credentials on
 // every request.
 //
-// The auth feature is only active when the server reports `configured: true`
-// from /api/auth/status (i.e. DATABASE_URL is set). When unconfigured the
-// app skips the login gate and runs as before.
+// /api/auth/status returns one of:
+//   { mode: 'disabled', ... }              — dev-only escape hatch; render app
+//   { mode: 'required', configured: true } — show login gate
+//   { mode: 'required', configured: false, error: 'auth_unavailable' }
+//                                          — DB missing/down; show error
+//
+// If the status request itself fails (e.g. server unreachable), we treat it
+// as `auth_unavailable` so the app never silently bypasses the login gate
+// against a misconfigured deploy.
 
 export type AuthUser = { id: number; username: string };
 
-export type AuthStatus = {
-  configured: boolean;
-  hasUser: boolean;
-  openRegistration: boolean;
-};
+export type AuthMode = 'disabled' | 'required';
+
+export type AuthStatus =
+  | { mode: 'disabled'; configured: false; hasUser: false; openRegistration: false }
+  | { mode: 'required'; configured: true; hasUser: boolean; openRegistration: boolean }
+  | { mode: 'required'; configured: false; hasUser: false; openRegistration: false; error: 'auth_unavailable' };
 
 export type AuthError =
   | 'invalid_credentials'
@@ -37,7 +44,10 @@ function apiBase(): string {
 async function call<T>(
   pathname: string,
   init: RequestInit & { method: 'GET' | 'POST' },
-): Promise<{ ok: true; data: T } | { ok: false; status: number; error: AuthError; message?: string }> {
+): Promise<
+  | { ok: true; status: number; data: T }
+  | { ok: false; status: number; data: any; error: AuthError; message?: string }
+> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -60,13 +70,14 @@ async function call<T>(
       return {
         ok: false,
         status: res.status,
+        data: body,
         error: (body && typeof body.error === 'string' ? body.error : 'unknown') as AuthError,
         message: body && typeof body.message === 'string' ? body.message : undefined,
       };
     }
-    return { ok: true, data: body as T };
+    return { ok: true, status: res.status, data: body as T };
   } catch (err: any) {
-    return { ok: false, status: 0, error: 'network' };
+    return { ok: false, status: 0, data: null, error: 'network' };
   } finally {
     clearTimeout(timer);
   }
@@ -75,9 +86,25 @@ async function call<T>(
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const r = await call<AuthStatus>('/api/auth/status', { method: 'GET' });
   if (r.ok) return r.data;
-  // If auth/status itself can't be reached, treat as unconfigured so the app
-  // doesn't get stuck on a login screen with no server.
-  return { configured: false, hasUser: false, openRegistration: false };
+  // 503 with a structured body still tells us the server's intent.
+  if (r.data && typeof r.data === 'object' && r.data.mode === 'required') {
+    return {
+      mode: 'required',
+      configured: false,
+      hasUser: false,
+      openRegistration: false,
+      error: 'auth_unavailable',
+    };
+  }
+  // Anything else (network failure, unexpected shape): fail closed — assume
+  // auth is required and unavailable. We never silently bypass the gate.
+  return {
+    mode: 'required',
+    configured: false,
+    hasUser: false,
+    openRegistration: false,
+    error: 'auth_unavailable',
+  };
 }
 
 export async function fetchMe(): Promise<AuthUser | null> {

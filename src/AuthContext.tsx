@@ -3,7 +3,8 @@ import { AuthUser, AuthStatus, fetchAuthStatus, fetchMe, logout as apiLogout } f
 
 type AuthState =
   | { status: 'loading' }
-  | { status: 'disabled' } // server has no DATABASE_URL — auth feature off
+  | { status: 'disabled' } // dev-only escape hatch — render app
+  | { status: 'unavailable' } // auth required but server can't service it (DB missing/down)
   | { status: 'unauthenticated'; canRegister: boolean }
   | { status: 'authenticated'; user: AuthUser };
 
@@ -26,8 +27,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     const status: AuthStatus = await fetchAuthStatus();
-    if (!status.configured) {
+    if (status.mode === 'disabled') {
       setState({ status: 'disabled' });
+      return;
+    }
+    // mode === 'required'
+    if (!status.configured) {
+      setState({ status: 'unavailable' });
       return;
     }
     const me = await fetchMe();
@@ -36,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       setState({
         status: 'unauthenticated',
-        canRegister: status.openRegistration || !status.hasUser,
+        canRegister: status.openRegistration,
       });
     }
   }, []);

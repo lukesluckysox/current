@@ -15,7 +15,7 @@
 const path = require('path');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
-const { initDb, isDbConfigured, authMiddleware, requireAuth, mountAuthRoutes } = require('./auth');
+const { initDb, isDbConfigured, isAuthRequired, authMiddleware, requireAuth, mountAuthRoutes } = require('./auth');
 
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
@@ -264,14 +264,20 @@ async function complete(messages, system) {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, llm: Boolean(client), model: client ? MODEL : null, auth: isDbConfigured() });
+  res.json({
+    ok: true,
+    llm: Boolean(client),
+    model: client ? MODEL : null,
+    authRequired: isAuthRequired(),
+    authConfigured: isDbConfigured(),
+  });
 });
 
-// When DB-backed auth is configured, LLM endpoints require a session.
-// When DATABASE_URL is not set (local dev without Postgres), we leave them
-// open so the app still works against a bare server.
+// LLM endpoints require a session whenever auth is required (always in
+// production). The dev-only escape hatch CURRENT_AUTH_DISABLED=true skips
+// this check; production always enforces.
 function maybeRequireAuth(req, res, next) {
-  if (!isDbConfigured()) return next();
+  if (!isAuthRequired()) return next();
   return requireAuth(req, res, next);
 }
 
@@ -409,12 +415,14 @@ app.get('*', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Current server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL}, auth=${isDbConfigured()})`);
+  console.log(`Current server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL}, authRequired=${isAuthRequired()}, authConfigured=${isDbConfigured()})`);
   if (isDbConfigured()) {
     initDb().then((ok) => {
       console.log(`[auth] db init ${ok ? 'ok' : 'failed'}`);
     });
+  } else if (isAuthRequired()) {
+    console.error('[auth] DATABASE_URL is NOT set but auth is required (production or CURRENT_AUTH_DISABLED!=true). Login and LLM endpoints will return 503 until DATABASE_URL is provided.');
   } else {
-    console.warn('[auth] DATABASE_URL not set — auth disabled, LLM endpoints open.');
+    console.warn('[auth] CURRENT_AUTH_DISABLED=true (dev only) — login gate skipped, LLM endpoints open.');
   }
 });

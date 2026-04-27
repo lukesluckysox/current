@@ -1,19 +1,32 @@
 // Username/password auth backed by Postgres.
 //
 // Required env (server-only):
-//   DATABASE_URL      Postgres URL. Provided by Railway when Postgres is attached.
+//   DATABASE_URL      Postgres URL. Required in production for login. In
+//                     production a missing DATABASE_URL surfaces an
+//                     `auth_unavailable` state to the client rather than
+//                     silently rendering the app unauthenticated.
+//
 // Recommended:
 //   SESSION_SECRET    Secret used to sign session cookies. In production this
-//                     MUST be set; in development a fallback is used and a
-//                     warning is logged.
-// Optional (one-time admin seed):
+//                     SHOULD be set; otherwise an ephemeral random secret is
+//                     used and sessions do not survive restarts.
+//
+// Registration:
+//   By default registration is OPEN — multiple users can sign up. To close
+//   registration on a deployed instance, set:
+//     CURRENT_OPEN_REGISTRATION=false
+//
+// Optional one-time admin seed:
 //   CURRENT_ADMIN_USERNAME / CURRENT_ADMIN_PASSWORD
 //                     If both are set and no users exist, this user is seeded
-//                     on startup. Otherwise, registration is OPEN until at
-//                     least one user exists, then it is closed (single-user
-//                     mode by default).
-//   CURRENT_OPEN_REGISTRATION=true
-//                     Keep registration open even after a user exists.
+//                     on startup. Does not change the open-registration
+//                     default; it just guarantees one known account exists.
+//
+// Local dev escape hatch (NEVER honored in production):
+//   CURRENT_AUTH_DISABLED=true
+//                     With NODE_ENV != 'production', skip the login gate
+//                     entirely. Useful when running `npm run web` against a
+//                     bare server with no Postgres. Ignored in production.
 
 const crypto = require('crypto');
 const { Pool } = require('pg');
@@ -35,19 +48,30 @@ const MAX_PASSWORD_LEN = 200;
 let pool = null;
 let dbReady = false;
 let dbInitPromise = null;
-let openRegistration = process.env.CURRENT_OPEN_REGISTRATION === 'true';
+
+function isProd() {
+  return process.env.NODE_ENV === 'production';
+}
+
+// Registration is open by default. Only the explicit string "false" closes it.
+function isRegistrationOpen() {
+  return process.env.CURRENT_OPEN_REGISTRATION !== 'false';
+}
+
+// Local-dev escape hatch only. Production always requires auth.
+function isAuthDisabled() {
+  if (isProd()) return false;
+  return process.env.CURRENT_AUTH_DISABLED === 'true';
+}
 
 function sessionSecret() {
   const s = process.env.SESSION_SECRET;
   if (s && s.length >= 16) return s;
-  if (process.env.NODE_ENV === 'production') {
-    // Don't crash, but make this loud — logins will not survive a restart and
-    // any leak of the fallback would forge sessions across deployments.
+  if (isProd()) {
     console.warn('[auth] SESSION_SECRET is missing or too short in production. Using an ephemeral random secret; sessions will not survive restarts.');
   } else {
     console.warn('[auth] SESSION_SECRET not set — using a development fallback.');
   }
-  // Ephemeral per-process fallback — invalidates every cookie on restart.
   return crypto.randomBytes(32).toString('hex');
 }
 const SECRET = sessionSecret();
@@ -86,7 +110,6 @@ async function initDb() {
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    // Case-insensitive uniqueness on username.
     await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username))`);
     await maybeSeedAdmin();
     dbReady = true;
@@ -130,7 +153,6 @@ function hashPassword(password) {
     const salt = crypto.randomBytes(SCRYPT_SALT_BYTES);
     crypto.scrypt(password, salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P }, (err, derived) => {
       if (err) return reject(err);
-      // Format: scrypt$N$r$p$saltHex$hashHex
       resolve(`scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('hex')}$${derived.toString('hex')}`);
     });
   });
@@ -161,7 +183,6 @@ function verifyPassword(password, stored) {
 // ─── Sessions (signed HMAC cookie — stateless, no session table) ─────────────
 
 function signSession(payload) {
-  // payload: { uid, name, exp }
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
   return `${body}.${sig}`;
@@ -204,7 +225,6 @@ function parseCookies(req) {
 }
 
 function setSessionCookie(res, token) {
-  const isProd = process.env.NODE_ENV === 'production';
   const parts = [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -212,12 +232,11 @@ function setSessionCookie(res, token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
   ];
-  if (isProd) parts.push('Secure');
+  if (isProd()) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 function clearSessionCookie(res) {
-  const isProd = process.env.NODE_ENV === 'production';
   const parts = [
     `${SESSION_COOKIE}=`,
     'Path=/',
@@ -225,7 +244,7 @@ function clearSessionCookie(res) {
     'SameSite=Lax',
     'Max-Age=0',
   ];
-  if (isProd) parts.push('Secure');
+  if (isProd()) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
@@ -252,6 +271,13 @@ function isDbConfigured() {
   return Boolean(process.env.DATABASE_URL);
 }
 
+// True when this process actually requires the user to log in. Production is
+// always required. In dev, required unless CURRENT_AUTH_DISABLED=true.
+function isAuthRequired() {
+  if (isProd()) return true;
+  return !isAuthDisabled();
+}
+
 // ─── Express middleware + routes ─────────────────────────────────────────────
 
 function authMiddleware(req, _res, next) {
@@ -262,35 +288,71 @@ function authMiddleware(req, _res, next) {
 }
 
 function requireAuth(req, res, next) {
+  if (!isAuthRequired()) return next();
+  if (!isDbConfigured()) return res.status(503).json({ error: 'auth_unavailable' });
   if (!req.user) return res.status(401).json({ error: 'unauthenticated' });
   next();
 }
 
 function mountAuthRoutes(app) {
+  app.get('/api/auth/status', async (_req, res) => {
+    // mode is what the client uses to decide whether to gate the app.
+    //   'disabled' -> no login gate (dev only)
+    //   'required' -> login gate. Combined with `configured` to know whether
+    //                 the DB is reachable; if not, the client shows an
+    //                 "auth unavailable" message rather than the app.
+    if (!isAuthRequired()) {
+      return res.json({
+        mode: 'disabled',
+        configured: false,
+        hasUser: false,
+        openRegistration: false,
+      });
+    }
+    if (!isDbConfigured()) {
+      return res.status(503).json({
+        mode: 'required',
+        configured: false,
+        hasUser: false,
+        openRegistration: false,
+        error: 'auth_unavailable',
+      });
+    }
+    const ok = await initDb();
+    if (!ok) {
+      return res.status(503).json({
+        mode: 'required',
+        configured: false,
+        hasUser: false,
+        openRegistration: false,
+        error: 'auth_unavailable',
+      });
+    }
+    const has = await hasAnyUser();
+    res.json({
+      mode: 'required',
+      configured: true,
+      hasUser: has,
+      openRegistration: isRegistrationOpen(),
+    });
+  });
+
   app.get('/api/auth/me', async (req, res) => {
+    if (!isAuthRequired()) return res.status(404).json({ error: 'auth_disabled' });
     if (!isDbConfigured()) return res.status(503).json({ error: 'auth_unavailable' });
     if (!req.user) return res.status(401).json({ error: 'unauthenticated' });
     res.json({ user: { id: req.user.id, username: req.user.username } });
   });
 
-  app.get('/api/auth/status', async (_req, res) => {
-    if (!isDbConfigured()) {
-      return res.json({ configured: false, hasUser: false, openRegistration: false });
-    }
-    const ok = await initDb();
-    if (!ok) return res.status(503).json({ error: 'auth_unavailable' });
-    const has = await hasAnyUser();
-    res.json({
-      configured: true,
-      hasUser: has,
-      openRegistration: openRegistration || !has,
-    });
-  });
-
   app.post('/api/auth/register', async (req, res) => {
+    if (!isAuthRequired()) return res.status(404).json({ error: 'auth_disabled' });
     if (!isDbConfigured()) return res.status(503).json({ error: 'auth_unavailable' });
     const ok = await initDb();
     if (!ok) return res.status(503).json({ error: 'auth_unavailable' });
+
+    if (!isRegistrationOpen()) {
+      return res.status(403).json({ error: 'registration_closed' });
+    }
 
     const body = req.body || {};
     const username = typeof body.username === 'string' ? body.username.trim() : '';
@@ -301,13 +363,6 @@ function mountAuthRoutes(app) {
     }
     if (password.length < MIN_PASSWORD_LEN || password.length > MAX_PASSWORD_LEN) {
       return res.status(400).json({ error: 'invalid_password', message: `password must be ${MIN_PASSWORD_LEN}–${MAX_PASSWORD_LEN} chars` });
-    }
-
-    // Closed registration: once any user exists, /register is rejected unless
-    // CURRENT_OPEN_REGISTRATION=true.
-    const has = await hasAnyUser();
-    if (has && !openRegistration) {
-      return res.status(403).json({ error: 'registration_closed' });
     }
 
     const exists = await findUserByUsername(username);
@@ -328,7 +383,6 @@ function mountAuthRoutes(app) {
       );
       row = r.rows[0];
     } catch (err) {
-      // Unique-violation race
       if (err && err.code === '23505') return res.status(409).json({ error: 'username_taken' });
       console.warn('[auth] register insert error:', err?.message || err);
       return res.status(500).json({ error: 'server_error' });
@@ -339,6 +393,7 @@ function mountAuthRoutes(app) {
   });
 
   app.post('/api/auth/login', async (req, res) => {
+    if (!isAuthRequired()) return res.status(404).json({ error: 'auth_disabled' });
     if (!isDbConfigured()) return res.status(503).json({ error: 'auth_unavailable' });
     const ok = await initDb();
     if (!ok) return res.status(503).json({ error: 'auth_unavailable' });
@@ -348,7 +403,6 @@ function mountAuthRoutes(app) {
     if (!username || !password) return res.status(400).json({ error: 'invalid_credentials' });
 
     const user = await findUserByUsername(username);
-    // Always run a verify to keep timing roughly constant.
     const valid = user
       ? await verifyPassword(password, user.password_hash)
       : await verifyPassword(password, 'scrypt$16384$8$1$00$00');
@@ -368,6 +422,7 @@ function mountAuthRoutes(app) {
 module.exports = {
   initDb,
   isDbConfigured,
+  isAuthRequired,
   authMiddleware,
   requireAuth,
   mountAuthRoutes,
