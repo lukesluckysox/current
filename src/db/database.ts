@@ -26,6 +26,7 @@ export type Line = {
   constellation: string | null;// optional relationship tag
   topic: string | null;        // optional topic/prompt (e.g. paradox topic)
   is_favorite: number;
+  is_seed: number;             // 1 if planted as a sample line on first run
   created_at: number;
 };
 
@@ -109,6 +110,7 @@ export async function initDatabase(): Promise<void> {
       constellation TEXT,
       topic TEXT,
       is_favorite INTEGER NOT NULL DEFAULT 0,
+      is_seed INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
 
@@ -169,6 +171,15 @@ export async function initDatabase(): Promise<void> {
       created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
     );
   `);
+
+  // Best-effort column add for installs created before is_seed existed.
+  // SQLite's IF NOT EXISTS doesn't apply to ALTER TABLE, so we swallow the
+  // duplicate-column error.
+  try {
+    await db.execAsync('ALTER TABLE lines ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // column already exists
+  }
 
   await migrateLegacyToLines();
 
@@ -231,16 +242,16 @@ async function seedLines(): Promise<void> {
   const day = 86400;
 
   await db.execAsync(`
-    INSERT INTO lines (content, mode, tide, terrain, created_at) VALUES
-      ('the best ideas arrive when you''re doing something else', 'fragment', 'glass water', null, ${now - day * 4}),
-      ('a sentence written in salt', 'fragment', null, 'still', ${now - day * 3}),
-      ('ambition is just impatience dressed up', 'paradox', null, null, ${now - day * 2}),
-      ('what if slow is the whole point', 'fragment', 'low tide', null, ${now - day}),
-      ('everything interesting happens at the edges', 'fragment', null, null, ${now - Math.floor(day * 0.5)});
+    INSERT INTO lines (content, mode, tide, terrain, is_seed, created_at) VALUES
+      ('the best ideas arrive when you''re doing something else', 'fragment', 'glass water', null, 1, ${now - day * 4}),
+      ('a sentence written in salt', 'fragment', null, 'still', 1, ${now - day * 3}),
+      ('ambition is just impatience dressed up', 'paradox', null, null, 1, ${now - day * 2}),
+      ('what if slow is the whole point', 'fragment', 'low tide', null, 1, ${now - day}),
+      ('everything interesting happens at the edges', 'fragment', null, null, 1, ${now - Math.floor(day * 0.5)});
 
-    INSERT INTO lines (content, mode, template, is_favorite, created_at) VALUES
-      ('The ocean is a mirror for the restless mind.', 'complete', 'The ocean is a _ for the _ mind.', 1, ${now - day * 4}),
-      ('Clarity is the price of solitude.', 'complete', '_ is the price of _.', 1, ${now - day});
+    INSERT INTO lines (content, mode, template, is_favorite, is_seed, created_at) VALUES
+      ('The ocean is a mirror for the restless mind.', 'complete', 'The ocean is a _ for the _ mind.', 1, 1, ${now - day * 4}),
+      ('Clarity is the price of solitude.', 'complete', '_ is the price of _.', 1, 1, ${now - day});
   `);
 }
 
@@ -294,6 +305,20 @@ export async function deleteLine(id: number): Promise<void> {
   await db.runAsync('DELETE FROM lines WHERE id = ?', id);
 }
 
+// Drop every line that was planted on first run as a sample. Lines the user
+// has saved (is_seed = 0) are left alone.
+export async function deleteSeedLines(): Promise<number> {
+  const result = await db.runAsync('DELETE FROM lines WHERE is_seed = 1');
+  return result.changes ?? 0;
+}
+
+export async function countSeedLines(): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM lines WHERE is_seed = 1'
+  );
+  return row?.count ?? 0;
+}
+
 // ─── Custom templates ────────────────────────────────────────────────────────
 
 export async function addCustomTemplate(template: string): Promise<void> {
@@ -308,6 +333,10 @@ export async function getCustomTemplates(): Promise<Array<{ id: number; template
   return db.getAllAsync<{ id: number; template: string }>(
     'SELECT id, template FROM custom_templates ORDER BY created_at DESC'
   );
+}
+
+export async function deleteCustomTemplate(id: number): Promise<void> {
+  await db.runAsync('DELETE FROM custom_templates WHERE id = ?', id);
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────

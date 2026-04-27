@@ -98,10 +98,14 @@ export const VERSO_TEMPLATES = [
   'To _ is to forget that _.',
 ];
 
-// Fill-in-the-blank template families used by Verso · Complete · Generate.
-// Each family is a small bank of skeletons; Generate picks one and seeds blanks
-// from any present fragment/tags so the user always finishes the line.
-export type CompleteFamily =
+// Verso · Complete is organised as: pick a *board* (a high-level posture —
+// confession, image, etc.), then choose or generate a *break* underneath it.
+// A break is a fill-in-the-blank skeleton with one or more `_` blanks the user
+// finishes. Static break banks below are used as fallbacks when the LLM is
+// unreachable; the primary path is generation. The legacy names
+// `CompleteFamily` / `COMPLETE_TEMPLATES` are kept as type aliases so existing
+// imports keep compiling.
+export type CompleteBoard =
   | 'confession'
   | 'image'
   | 'question'
@@ -110,7 +114,10 @@ export type CompleteFamily =
   | 'threshold'
   | 'return';
 
-export const COMPLETE_FAMILIES: Array<{ id: CompleteFamily; label: string; hint: string }> = [
+// Legacy alias — internal type name preserved to avoid an invasive rename.
+export type CompleteFamily = CompleteBoard;
+
+export const COMPLETE_BOARDS: Array<{ id: CompleteBoard; label: string; hint: string }> = [
   { id: 'confession',    label: 'confession',    hint: 'admit something quietly' },
   { id: 'image',         label: 'image',         hint: 'a picture in a single line' },
   { id: 'question',      label: 'question',      hint: 'a question you can’t answer' },
@@ -120,7 +127,12 @@ export const COMPLETE_FAMILIES: Array<{ id: CompleteFamily; label: string; hint:
   { id: 'return',        label: 'return',        hint: 'coming back to the same place' },
 ];
 
-export const COMPLETE_TEMPLATES: Record<CompleteFamily, string[]> = {
+// Legacy alias for the same array — kept for any caller still importing it.
+export const COMPLETE_FAMILIES = COMPLETE_BOARDS;
+
+// Static fallback breaks per board. Used only when /api/generate-breaks is
+// unavailable; the primary creative engine is the LLM.
+export const COMPLETE_BREAK_FALLBACKS: Record<CompleteBoard, string[]> = {
   confession: [
     'I never told anyone that _ was really about _.',
     'The truth is, I _ when no one is _.',
@@ -164,6 +176,9 @@ export const COMPLETE_TEMPLATES: Record<CompleteFamily, string[]> = {
     'Some part of me is still _ in _.',
   ],
 };
+
+// Legacy export name preserved for any external caller; identical contents.
+export const COMPLETE_TEMPLATES = COMPLETE_BREAK_FALLBACKS;
 
 export const PARADOX_TOPICS = [
   'freedom',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,15 @@ import {
   Alert,
   Share,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
-import { exportAllData, clearAllData } from '../db/database';
+import {
+  exportAllData,
+  clearAllData,
+  countSeedLines,
+  deleteSeedLines,
+} from '../db/database';
 import { Header } from '../components';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../AuthContext';
@@ -21,6 +27,39 @@ type Props = {
 
 export default function SettingsScreen({ navigation }: Props) {
   const auth = useAuth();
+  const [seedCount, setSeedCount] = useState<number>(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      countSeedLines().then((n) => {
+        if (!cancelled) setSeedCount(n);
+      }).catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  async function handleClearSeeds() {
+    Alert.alert(
+      'Drop the sample lines?',
+      `${seedCount} sample line${seedCount === 1 ? '' : 's'} planted on first run will leave the archive. Anything you've kept stays.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Release samples',
+          style: 'destructive',
+          onPress: async () => {
+            const removed = await deleteSeedLines();
+            setSeedCount(0);
+            Alert.alert('Released', `${removed} sample line${removed === 1 ? '' : 's'} dropped.`);
+          },
+        },
+      ]
+    );
+  }
+
   async function handleExport() {
     const data = await exportAllData();
     try {
@@ -64,6 +103,23 @@ export default function SettingsScreen({ navigation }: Props) {
             </View>
             <Text style={styles.actionArrow}>↑</Text>
           </TouchableOpacity>
+
+          {seedCount > 0 && (
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={handleClearSeeds}
+              activeOpacity={0.75}
+              testID="drop-sample-lines"
+            >
+              <View>
+                <Text style={styles.actionTitle}>Drop the sample lines</Text>
+                <Text style={styles.actionSubtitle}>
+                  {seedCount} planted on first run · your kept lines stay
+                </Text>
+              </View>
+              <Text style={styles.actionArrow}>×</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.actionRow} onPress={handleClearData} activeOpacity={0.75}>
             <View>

@@ -101,6 +101,29 @@ export async function editLine(
   return { ok: true, line: out };
 }
 
+export type CompleteBoard =
+  | 'confession' | 'image' | 'question' | 'memory'
+  | 'contradiction' | 'threshold' | 'return';
+
+export async function generateBreaks(
+  board: CompleteBoard,
+  count = 4,
+  context?: GenerateContext,
+): Promise<{ ok: true; breaks: string[] } | { ok: false; error: GenerateError }> {
+  const result = await call<{ breaks?: string[] }>('/api/generate-breaks', {
+    board,
+    count,
+    context: context ?? null,
+  });
+  if (!result.ok) return result;
+  const breaks = (result.data.breaks || [])
+    .filter((b) => typeof b === 'string')
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+  if (breaks.length === 0) return { ok: false, error: { kind: 'empty' } };
+  return { ok: true, breaks };
+}
+
 export type WhyBreakResult = {
   type: GenerateBreak;
   reason: string;

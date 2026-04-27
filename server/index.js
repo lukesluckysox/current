@@ -29,6 +29,19 @@ const REQUEST_TIMEOUT_MS = 8000;
 
 const VALID_TYPES = new Set(['aphorism', 'paradox', 'contradiction']);
 const VALID_EDIT_OPS = new Set(['clearer', 'sharper', 'stranger']);
+const VALID_BOARDS = new Set([
+  'confession', 'image', 'question', 'memory',
+  'contradiction', 'threshold', 'return',
+]);
+const BOARD_HINTS = {
+  confession:    'an admission spoken quietly to one person, never as therapy',
+  image:         'a single concrete picture — light, room, weather, body, object',
+  question:      'a question with no comfortable answer; not rhetorical',
+  memory:        'a small remembered specific — a smell, room, sentence, hour',
+  contradiction: 'two truths pulling against each other inside one line',
+  threshold:     'the suspended hour just before something changes',
+  return:        'a thing the speaker keeps coming back to without choosing',
+};
 
 const app = express();
 app.disable('x-powered-by');
@@ -186,6 +199,22 @@ function editPrompt(op, line, type) {
   }
 }
 
+// Prompt for generating fill-in-the-blank break skeletons for a board.
+function breaksPrompt(board, count, ctx) {
+  const hint = BOARD_HINTS[board] || '';
+  const ctxClause = contextBlock(ctx);
+  return [
+    `Generate ${count} fill-in-the-blank skeletons (we call them "breaks") for the "${board}" board.`,
+    `Posture of this board: ${hint}.`,
+    'Each skeleton is one short line a writer can finish in seconds.',
+    'Use a single underscore character with a space on each side ( _ ) to mark each blank. Two blanks max per line; one is often better.',
+    'Voice: terse, image-led, contemporary, exact. Concrete nouns. No motivational tone, no therapy vocabulary, no quote-card cadence, no second-person commands, no rhetorical questions (unless this is the question board).',
+    'Each skeleton must be useful as a starter — surprising, specific, and finishable. No quotation marks, no leading dashes or numbers.',
+    'Output: exactly one skeleton per line, no blank lines, no commentary, no labels. Plain text.',
+    ctxClause,
+  ].join(' ');
+}
+
 // ─── Output handling ─────────────────────────────────────────────────────────
 
 const CLICHE_PATTERNS = [
@@ -236,6 +265,44 @@ function sanitize(text) {
 const client = ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: ANTHROPIC_API_KEY, timeout: REQUEST_TIMEOUT_MS, maxRetries: 0 })
   : null;
+
+// Parse multiline break output. Strips list markers, quotes, blank lines.
+// Keeps only lines containing at least one ` _ ` blank token.
+function parseBreakLines(text) {
+  if (!text) return [];
+  return text
+    .split('\n')
+    .map((s) => s.trim())
+    .map((s) => s.replace(/^[-•*\d.)\s]+/, ''))
+    .map((s) => s.replace(/^["“'']+|["”'']+$/g, ''))
+    .filter((s) => s.length > 0)
+    .filter((s) => / _ /.test(s) || / _$/.test(s) || /^_ /.test(s))
+    .map((s) => s.length > MAX_LINE_LEN ? s.slice(0, MAX_LINE_LEN).trim() : s);
+}
+
+// Like complete(), but returns the raw multiline text without sanitize().
+async function completeRaw(messages, system) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const result = await client.messages.create(
+      {
+        model: MODEL,
+        max_tokens: 400,
+        temperature: 1,
+        system: system || systemPrompt(),
+        messages,
+      },
+      { signal: controller.signal }
+    );
+    return (result.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function complete(messages, system) {
   const controller = new AbortController();
@@ -339,6 +406,37 @@ app.post('/api/edit', maybeRequireAuth, rateLimit, async (req, res) => {
     const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
     console.warn(`[edit] op=${op} status=${status} err=${err?.name || 'unknown'}`);
     return res.status(status === 504 ? 504 : 502).json({ error: 'edit_failed' });
+  }
+});
+
+// ─── /api/generate-breaks ────────────────────────────────────────────────────
+//
+// Generate a small set of fill-in-the-blank skeletons ("breaks") for a
+// Complete board (confession / image / question / memory / contradiction /
+// threshold / return). The client falls back to a static bank if this fails.
+
+app.post('/api/generate-breaks', maybeRequireAuth, rateLimit, async (req, res) => {
+  if (!client) return res.status(503).json({ error: 'llm_unavailable' });
+  const body = req.body || {};
+  const board = String(body.board || '').toLowerCase();
+  const requestedCount = Number(body.count);
+  const count = Number.isFinite(requestedCount)
+    ? Math.max(2, Math.min(6, Math.floor(requestedCount)))
+    : 4;
+  const ctx = body.context && typeof body.context === 'object' ? body.context : null;
+  if (!VALID_BOARDS.has(board)) return res.status(400).json({ error: 'invalid_board' });
+
+  try {
+    const raw = await completeRaw(
+      [{ role: 'user', content: breaksPrompt(board, count, ctx) }],
+    );
+    const breaks = parseBreakLines(raw).slice(0, count);
+    if (breaks.length === 0) return res.status(502).json({ error: 'empty_response' });
+    return res.json({ breaks, board });
+  } catch (err) {
+    const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
+    console.warn(`[generate-breaks] board=${board} status=${status} err=${err?.name || 'unknown'}`);
+    return res.status(status === 504 ? 504 : 502).json({ error: 'generation_failed' });
   }
 });
 

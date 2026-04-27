@@ -362,6 +362,7 @@ function LineRow({
       <View style={styles.entryFooter}>
         <Text style={styles.entryDate}>{formatDate(line.created_at)}</Text>
         <View style={styles.footerRight}>
+          {line.is_seed === 1 && <Text style={styles.seedIcon}>sample</Text>}
           {line.is_favorite === 1 && <Text style={styles.starIcon}>★</Text>}
           <Text style={styles.openHint}>open →</Text>
         </View>
@@ -488,6 +489,18 @@ const styles = StyleSheet.create({
   starIcon: {
     color: Colors.amber,
     fontSize: FontSizes.md,
+  },
+  seedIcon: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
   openHint: {
     color: Colors.muted,

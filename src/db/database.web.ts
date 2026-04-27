@@ -20,6 +20,7 @@ export type Line = {
   constellation: string | null;
   topic: string | null;
   is_favorite: number;
+  is_seed: number;
   created_at: number;
 };
 
@@ -75,6 +76,15 @@ export async function initDatabase(): Promise<void> {
   const lines = load<Line>(KEY_LINES);
   if (lines.length === 0) {
     seedLines();
+  } else {
+    // Backfill is_seed for any line saved before the field existed.
+    let touched = false;
+    const patched = lines.map((l) => {
+      if (typeof l.is_seed === 'number') return l;
+      touched = true;
+      return { ...l, is_seed: 0 };
+    });
+    if (touched) save(KEY_LINES, patched);
   }
 }
 
@@ -100,6 +110,7 @@ function migrateLegacyToLines(): void {
       constellation: null,
       topic: null,
       is_favorite: 0,
+      is_seed: 0,
       created_at: e.created_at,
     });
   }
@@ -114,6 +125,7 @@ function migrateLegacyToLines(): void {
       constellation: null,
       topic: null,
       is_favorite: e.is_favorite,
+      is_seed: 0,
       created_at: e.created_at,
     });
   }
@@ -128,6 +140,7 @@ function migrateLegacyToLines(): void {
       constellation: null,
       topic: e.prompt,
       is_favorite: 0,
+      is_seed: 0,
       created_at: e.created_at,
     });
   }
@@ -140,13 +153,13 @@ function seedLines(): void {
   const n = now();
   const d = 86400;
   save<Line>(KEY_LINES, [
-    { id: 1, content: "the best ideas arrive when you're doing something else", mode: 'fragment', template: null, tide: 'glass water', terrain: null, constellation: null, topic: null, is_favorite: 0, created_at: n - d * 4 },
-    { id: 2, content: 'a sentence written in salt', mode: 'fragment', template: null, tide: null, terrain: 'still', constellation: null, topic: null, is_favorite: 0, created_at: n - d * 3 },
-    { id: 3, content: 'ambition is just impatience dressed up', mode: 'paradox', template: null, tide: null, terrain: null, constellation: null, topic: null, is_favorite: 0, created_at: n - d * 2 },
-    { id: 4, content: 'what if slow is the whole point', mode: 'fragment', template: null, tide: 'low tide', terrain: null, constellation: null, topic: null, is_favorite: 0, created_at: n - d },
-    { id: 5, content: 'everything interesting happens at the edges', mode: 'fragment', template: null, tide: null, terrain: null, constellation: null, topic: null, is_favorite: 0, created_at: n - Math.floor(d * 0.5) },
-    { id: 6, content: 'The ocean is a mirror for the restless mind.', mode: 'complete', template: 'The ocean is a _ for the _ mind.', tide: null, terrain: null, constellation: null, topic: null, is_favorite: 1, created_at: n - d * 4 },
-    { id: 7, content: 'Clarity is the price of solitude.', mode: 'complete', template: '_ is the price of _.', tide: null, terrain: null, constellation: null, topic: null, is_favorite: 1, created_at: n - d },
+    { id: 1, content: "the best ideas arrive when you're doing something else", mode: 'fragment', template: null, tide: 'glass water', terrain: null, constellation: null, topic: null, is_favorite: 0, is_seed: 1, created_at: n - d * 4 },
+    { id: 2, content: 'a sentence written in salt', mode: 'fragment', template: null, tide: null, terrain: 'still', constellation: null, topic: null, is_favorite: 0, is_seed: 1, created_at: n - d * 3 },
+    { id: 3, content: 'ambition is just impatience dressed up', mode: 'paradox', template: null, tide: null, terrain: null, constellation: null, topic: null, is_favorite: 0, is_seed: 1, created_at: n - d * 2 },
+    { id: 4, content: 'what if slow is the whole point', mode: 'fragment', template: null, tide: 'low tide', terrain: null, constellation: null, topic: null, is_favorite: 0, is_seed: 1, created_at: n - d },
+    { id: 5, content: 'everything interesting happens at the edges', mode: 'fragment', template: null, tide: null, terrain: null, constellation: null, topic: null, is_favorite: 0, is_seed: 1, created_at: n - Math.floor(d * 0.5) },
+    { id: 6, content: 'The ocean is a mirror for the restless mind.', mode: 'complete', template: 'The ocean is a _ for the _ mind.', tide: null, terrain: null, constellation: null, topic: null, is_favorite: 1, is_seed: 1, created_at: n - d * 4 },
+    { id: 7, content: 'Clarity is the price of solitude.', mode: 'complete', template: '_ is the price of _.', tide: null, terrain: null, constellation: null, topic: null, is_favorite: 1, is_seed: 1, created_at: n - d },
   ]);
 }
 
@@ -165,6 +178,7 @@ export async function addLine(input: LineInput): Promise<number> {
     constellation: input.constellation ?? null,
     topic: input.topic ?? null,
     is_favorite: 0,
+    is_seed: 0,
     created_at: now(),
   });
   save(KEY_LINES, items);
@@ -201,6 +215,17 @@ export async function deleteLine(id: number): Promise<void> {
   save(KEY_LINES, load<Line>(KEY_LINES).filter((e) => e.id !== id));
 }
 
+export async function deleteSeedLines(): Promise<number> {
+  const items = load<Line>(KEY_LINES);
+  const remaining = items.filter((e) => e.is_seed !== 1);
+  save(KEY_LINES, remaining);
+  return items.length - remaining.length;
+}
+
+export async function countSeedLines(): Promise<number> {
+  return load<Line>(KEY_LINES).filter((e) => e.is_seed === 1).length;
+}
+
 // ─── Custom templates ────────────────────────────────────────────────────────
 
 export async function addCustomTemplate(template: string): Promise<void> {
@@ -211,6 +236,13 @@ export async function addCustomTemplate(template: string): Promise<void> {
 
 export async function getCustomTemplates(): Promise<Array<{ id: number; template: string }>> {
   return load<{ id: number; template: string }>(KEY_TEMPLATES);
+}
+
+export async function deleteCustomTemplate(id: number): Promise<void> {
+  save(
+    KEY_TEMPLATES,
+    load<{ id: number; template: string }>(KEY_TEMPLATES).filter((e) => e.id !== id)
+  );
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────

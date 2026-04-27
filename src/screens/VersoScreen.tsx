@@ -15,15 +15,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Colors, Fonts, FontSizes, Spacing, Radius,
   VERSO_TEMPLATES, VERSO_MODES, VersoMode, PARADOX_TOPICS,
-  COMPLETE_FAMILIES, COMPLETE_TEMPLATES, CompleteFamily,
+  COMPLETE_BOARDS, COMPLETE_BREAK_FALLBACKS, CompleteBoard,
   LOCAL_FALLBACK_LINES,
 } from '../theme';
 import {
-  addLine, addCustomTemplate, getCustomTemplates, getLines, getConfig, setConfig, Line,
+  addLine, addCustomTemplate, getCustomTemplates, deleteCustomTemplate,
+  getLines, getConfig, setConfig, Line,
 } from '../db/database';
 import { Header, EmptyState, Pill } from '../components';
 import { RootStackParamList } from '../../App';
-import { generateLine, GenerateBreak, editLine, EditOp } from '../llm';
+import { generateLine, generateBreaks, GenerateBreak, EditOp, editLine } from '../llm';
 import {
   buildLexicon, findCurrents, dominantBreak,
   readBreakLocal, restraint as readRestraint,
@@ -62,13 +63,13 @@ function buildCompletedLine(template: string, fills: string[]): string {
   return parts.map((part, i) => (i < fills.length ? part + fills[i] : part)).join('');
 }
 
-// Pick a fresh template from a family, avoiding the currently-selected one if
-// possible. Deterministic-ish but not memoised, so repeated taps cycle.
-function generateTemplate(
-  family: CompleteFamily,
+// Pick a fresh fallback break from a board, avoiding the currently-selected
+// one if possible. Used when the LLM is unreachable.
+function pickFallbackBreak(
+  board: CompleteBoard,
   current: string | null,
 ): string {
-  const bank = COMPLETE_TEMPLATES[family];
+  const bank = COMPLETE_BREAK_FALLBACKS[board];
   if (!bank || bank.length === 0) return current ?? '';
   if (bank.length === 1) return bank[0];
   let pick = bank[Math.floor(Math.random() * bank.length)];
@@ -81,8 +82,8 @@ function generateTemplate(
 }
 
 // If a fragment or tags are present, seed the *first* blank with a
-// fragment-ish word so the generated template feels rooted in the user's
-// material. We never fill more than one blank — the user always finishes.
+// fragment-ish word so the chosen break feels rooted in the user's material.
+// We never fill more than one blank — the user always finishes.
 function seedFillsFor(
   template: string,
   seedContent: string | undefined,
@@ -121,10 +122,14 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [mode, setMode] = useState<VersoMode>(seedMode);
   const [selectedTemplate, setSelectedTemplate] = useState<string>(VERSO_TEMPLATES[0]);
   const [fills, setFills] = useState<string[]>([]);
-  const [customTemplates, setCustomTemplates] = useState<string[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<Array<{ id: number; template: string }>>([]);
   const [showCustomEntry, setShowCustomEntry] = useState(false);
   const [customTemplate, setCustomTemplate] = useState('');
-  const [activeFamily, setActiveFamily] = useState<CompleteFamily>('confession');
+  const [activeBoard, setActiveBoard] = useState<CompleteBoard>('confession');
+  const [generatedBreaks, setGeneratedBreaks] = useState<string[]>([]);
+  const [generatingBreaks, setGeneratingBreaks] = useState(false);
+  const [breaksError, setBreaksError] = useState<string | null>(null);
+  const [breaksSource, setBreaksSource] = useState<'llm' | 'fallback' | null>(null);
 
   // Free-text shaping (paradox / distill / aphorism / invert / contradiction)
   const [shaped, setShaped] = useState(seedContent ?? '');
@@ -148,7 +153,7 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   const load = useCallback(async () => {
     const custom = await getCustomTemplates();
-    setCustomTemplates(custom.map((c) => c.template));
+    setCustomTemplates(custom);
     const lines = await getLines();
     setAllLines(lines);
     const raw = await getConfig('style_hints_v1');
@@ -172,16 +177,65 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   function selectTemplate(t: string) {
     setSelectedTemplate(t);
-    setFills([]);
+    setFills(seedFillsFor(t, seedContent, null));
     setShowCustomEntry(false);
   }
 
-  function handleGenerate(family: CompleteFamily = activeFamily) {
-    setActiveFamily(family);
-    const next = generateTemplate(family, selectedTemplate);
-    setSelectedTemplate(next);
-    setFills(seedFillsFor(next, seedContent, null));
+  // Generate a fresh set of breaks for the given board via the LLM. Falls
+  // back to the static bank on error/timeout. Selects the first generated
+  // break so the user has something fillable immediately.
+  async function handleGenerateBreaks(board: CompleteBoard = activeBoard) {
+    setActiveBoard(board);
     setShowCustomEntry(false);
+    if (generatingBreaks) return;
+    setGeneratingBreaks(true);
+    setBreaksError(null);
+    try {
+      const result = await generateBreaks(board, 4, contextPacket);
+      if (result.ok) {
+        setGeneratedBreaks(result.breaks);
+        setBreaksSource('llm');
+        const first = result.breaks[0];
+        if (first) {
+          setSelectedTemplate(first);
+          setFills(seedFillsFor(first, seedContent, null));
+        }
+      } else {
+        const fallback = pickFallbackBreak(board, selectedTemplate);
+        setGeneratedBreaks([fallback]);
+        setBreaksSource('fallback');
+        setSelectedTemplate(fallback);
+        setFills(seedFillsFor(fallback, seedContent, null));
+        const labels: Record<string, string> = {
+          timeout: 'slow connection — local breaks',
+          unavailable: 'live model offline — local breaks',
+          rate_limited: 'too many in a moment — local breaks',
+          empty: 'model went quiet — local breaks',
+          bad_request: 'try a different board',
+          network: 'offline — local breaks',
+        };
+        setBreaksError(labels[result.error.kind] ?? 'local breaks');
+      }
+    } catch {
+      const fallback = pickFallbackBreak(board, selectedTemplate);
+      setGeneratedBreaks([fallback]);
+      setBreaksSource('fallback');
+      setSelectedTemplate(fallback);
+      setFills(seedFillsFor(fallback, seedContent, null));
+      setBreaksError('offline — local breaks');
+    } finally {
+      setGeneratingBreaks(false);
+    }
+  }
+
+  async function handleDeleteCustomBreak(id: number, template: string) {
+    await deleteCustomTemplate(id);
+    if (selectedTemplate === template) {
+      const next = generatedBreaks[0] ?? VERSO_TEMPLATES[0];
+      setSelectedTemplate(next);
+      setFills(seedFillsFor(next, seedContent, null));
+    }
+    await load();
   }
 
   function setFill(index: number, value: string) {
@@ -322,8 +376,26 @@ export default function VersoScreen({ navigation, route }: Props) {
     await load();
   }
 
-  const allTemplates = useMemo(
-    () => [...VERSO_TEMPLATES, ...customTemplates],
+  // The break rail shows: freshly generated breaks (from the LLM or fallback),
+  // then the user's saved custom breaks, then the built-in starter set.
+  // De-duped by string, preserving order.
+  const allBreaks = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const b of generatedBreaks) {
+      if (b && !seen.has(b)) { seen.add(b); out.push(b); }
+    }
+    for (const c of customTemplates) {
+      if (c.template && !seen.has(c.template)) { seen.add(c.template); out.push(c.template); }
+    }
+    for (const b of VERSO_TEMPLATES) {
+      if (b && !seen.has(b)) { seen.add(b); out.push(b); }
+    }
+    return out;
+  }, [generatedBreaks, customTemplates]);
+
+  const customTemplateSet = useMemo(
+    () => new Map(customTemplates.map((c) => [c.template, c.id])),
     [customTemplates]
   );
 
@@ -390,60 +462,88 @@ export default function VersoScreen({ navigation, route }: Props) {
         {mode === 'complete' ? (
           <>
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>pick a break</Text>
-              <Text style={styles.sectionAside}>sometimes the break calls first.</Text>
+              <Text style={styles.sectionLabel}>pick a board</Text>
+              <Text style={styles.sectionAside}>choose the posture · then generate or pick a break.</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.familyScroll}
               >
-                {COMPLETE_FAMILIES.map((f) => (
+                {COMPLETE_BOARDS.map((b) => (
                   <TouchableOpacity
-                    key={f.id}
-                    style={[styles.familyChip, activeFamily === f.id && styles.familyChipActive]}
-                    onPress={() => handleGenerate(f.id)}
+                    key={b.id}
+                    style={[styles.familyChip, activeBoard === b.id && styles.familyChipActive]}
+                    onPress={() => handleGenerateBreaks(b.id)}
                     activeOpacity={0.75}
-                    accessibilityLabel={`generate ${f.label} template`}
-                    testID={`family-${f.id}`}
+                    accessibilityLabel={`generate ${b.label} breaks`}
+                    testID={`board-${b.id}`}
                   >
-                    <Text style={[styles.familyChipText, activeFamily === f.id && styles.familyChipTextActive]}>
-                      {f.label}
+                    <Text style={[styles.familyChipText, activeBoard === b.id && styles.familyChipTextActive]}>
+                      {b.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               <View style={styles.generateRow}>
                 <Text style={styles.familyHint}>
-                  {COMPLETE_FAMILIES.find((f) => f.id === activeFamily)?.hint}
+                  {COMPLETE_BOARDS.find((b) => b.id === activeBoard)?.hint}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => handleGenerate()}
-                  style={styles.generateButton}
+                  onPress={() => handleGenerateBreaks()}
+                  style={[styles.generateButton, generatingBreaks && styles.saveButtonDisabled]}
                   activeOpacity={0.8}
-                  accessibilityLabel="another set"
-                  testID="generate-template"
+                  disabled={generatingBreaks}
+                  accessibilityLabel="generate breaks"
+                  testID="generate-breaks"
                 >
-                  <Text style={styles.generateButtonText}>another set ↻</Text>
+                  <Text style={styles.generateButtonText}>
+                    {generatingBreaks
+                      ? 'reading the water…'
+                      : generatedBreaks.length === 0 ? 'generate breaks ✦' : 'another set ↻'}
+                  </Text>
                 </TouchableOpacity>
               </View>
+              {breaksError && (
+                <Text style={styles.generateError} testID="breaks-error">{breaksError}</Text>
+              )}
 
-              <Text style={styles.sectionLabel}>or choose a template</Text>
+              <Text style={styles.sectionLabel}>
+                {generatedBreaks.length > 0
+                  ? (breaksSource === 'fallback' ? 'breaks · local fallback' : 'generated breaks')
+                  : 'or choose a break'}
+              </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
-                {allTemplates.map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.templateChip, selectedTemplate === t && styles.templateChipActive]}
-                    onPress={() => selectTemplate(t)}
-                    activeOpacity={0.75}
-                  >
-                    <Text
-                      style={[styles.templateChipText, selectedTemplate === t && styles.templateChipTextActive]}
-                      numberOfLines={1}
-                    >
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {allBreaks.map((t) => {
+                  const customId = customTemplateSet.get(t);
+                  return (
+                    <View key={t} style={styles.breakChipWrap}>
+                      <TouchableOpacity
+                        style={[styles.templateChip, selectedTemplate === t && styles.templateChipActive]}
+                        onPress={() => selectTemplate(t)}
+                        activeOpacity={0.75}
+                        testID={`break-chip-${t.slice(0, 24)}`}
+                      >
+                        <Text
+                          style={[styles.templateChipText, selectedTemplate === t && styles.templateChipTextActive]}
+                          numberOfLines={1}
+                        >
+                          {t}
+                        </Text>
+                      </TouchableOpacity>
+                      {customId !== undefined && (
+                        <TouchableOpacity
+                          onPress={() => handleDeleteCustomBreak(customId, t)}
+                          style={styles.breakDelete}
+                          activeOpacity={0.6}
+                          accessibilityLabel="delete custom break"
+                          testID={`break-delete-${customId}`}
+                        >
+                          <Text style={styles.breakDeleteText}>×</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
                 <TouchableOpacity
                   style={styles.templateChip}
                   onPress={() => setShowCustomEntry(!showCustomEntry)}
@@ -815,6 +915,28 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: '600',
     letterSpacing: 1,
+  },
+  breakChipWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  breakDelete: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -Spacing.xs,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  breakDeleteText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    lineHeight: 16,
   },
   templateChip: {
     paddingHorizontal: Spacing.md,
