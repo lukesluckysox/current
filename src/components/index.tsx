@@ -11,8 +11,73 @@ import {
   TextInputProps,
   ViewStyle,
   TextStyle,
+  useWindowDimensions,
 } from 'react-native';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+
+// ─── Responsive layout ───────────────────────────────────────────────────────
+//
+// Swell is mobile-first; on desktop/tablet we constrain content to a centered
+// "workbench" frame instead of letting it stretch edge-to-edge. Below the
+// tablet breakpoint everything passes through unchanged.
+
+export const BREAKPOINTS = {
+  tablet: 720,
+  desktop: 1024,
+};
+
+// Tuned so that the reading column stays comfortable at any viewport width.
+// 'narrow' suits text-led screens (LineDetail). 'normal' is the default
+// instrument width. 'wide' is for list/archive views that benefit from a bit
+// more horizontal room.
+const WORKBENCH_MAX = {
+  narrow: 640,
+  normal: 720,
+  wide: 880,
+};
+
+export function useIsDesktop(): boolean {
+  const { width } = useWindowDimensions();
+  return width >= BREAKPOINTS.tablet;
+}
+
+type WorkbenchProps = {
+  children: React.ReactNode;
+  /** Content size category. Defaults to 'normal'. */
+  size?: 'narrow' | 'normal' | 'wide';
+  /** Extra style applied to the inner frame. */
+  style?: ViewStyle;
+};
+
+/**
+ * Centered max-width frame for desktop/tablet. On mobile this is a no-op
+ * passthrough — children render edge-to-edge as before. On wider screens
+ * children are constrained to a readable column and centered.
+ */
+export function Workbench({ children, size = 'normal', style }: WorkbenchProps) {
+  const isDesktop = useIsDesktop();
+  if (!isDesktop) {
+    return <>{children}</>;
+  }
+  return (
+    <View
+      style={[
+        workbenchStyles.frame,
+        { maxWidth: WORKBENCH_MAX[size] },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+const workbenchStyles = StyleSheet.create({
+  frame: {
+    width: '100%',
+    alignSelf: 'center',
+  },
+});
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 

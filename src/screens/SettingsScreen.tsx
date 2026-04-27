@@ -17,7 +17,7 @@ import {
   countSeedLines,
   deleteSeedLines,
 } from '../db/database';
-import { Header } from '../components';
+import { Header, Workbench } from '../components';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../AuthContext';
 
@@ -81,6 +81,7 @@ export default function SettingsScreen({ navigation }: Props) {
       <Header title="Settings" onBack={() => navigation.goBack()} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        <Workbench size="normal">
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>your lines</Text>
           <Text style={styles.sectionNote}>
@@ -170,6 +171,7 @@ export default function SettingsScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.bottomPad} />
+        </Workbench>
       </ScrollView>
     </View>
   );

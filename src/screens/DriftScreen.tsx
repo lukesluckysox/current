@@ -19,7 +19,7 @@ import {
 import {
   addLine, getLines, Line,
 } from '../db/database';
-import { Header, SwellInput, WaveForecast } from '../components';
+import { Header, SwellInput, WaveForecast, Workbench, useIsDesktop } from '../components';
 import { RootStackParamList } from '../../App';
 import { computeForecast, Forecast } from '../forecast';
 import {
@@ -205,6 +205,7 @@ export default function DriftScreen({ navigation }: Props) {
   }
 
   const remaining = 200 - content.length;
+  const isDesktop = useIsDesktop();
 
   return (
     <KeyboardAvoidingView
@@ -228,7 +229,8 @@ export default function DriftScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.captureArea}>
+        <Workbench size="normal">
+        <View style={[styles.captureArea, isDesktop && styles.captureAreaDesktop]}>
           <Text style={styles.driftLabel}>drift</Text>
           <SwellInput
             value={content}
@@ -376,6 +378,7 @@ export default function DriftScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.bottomPad} />
+        </Workbench>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -481,6 +484,10 @@ const styles = StyleSheet.create({
   },
   captureArea: {
     padding: Spacing.lg,
+  },
+  captureAreaDesktop: {
+    paddingTop: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
   },
   captureInputContainer: {
     borderColor: Colors.borderLight,

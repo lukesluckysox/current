@@ -10,7 +10,7 @@ import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 import { getLines, deleteLine, Line, LineMode } from '../db/database';
-import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard } from '../components';
+import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard, Workbench } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 import { readCurrent } from '../forecast';
 import { confirm } from '../confirm';
@@ -178,6 +178,7 @@ export default function LinesScreen({ navigation, route }: Props) {
       <Header title="Depth Stack" onBack={() => navigation.goBack()} />
 
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Workbench size="wide">
         <TidalChart
           markers={buildLineMarkers(filteredLines)}
           totalCount={totalCount}
@@ -319,6 +320,7 @@ export default function LinesScreen({ navigation, route }: Props) {
         )}
 
         <View style={styles.bottomPad} />
+        </Workbench>
       </ScrollView>
     </View>
   );

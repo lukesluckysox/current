@@ -19,7 +19,7 @@ import {
 import {
   addLine, getLines, getConfig, setConfig, Line,
 } from '../db/database';
-import { Header, Pill } from '../components';
+import { Header, Pill, Workbench } from '../components';
 import { RootStackParamList } from '../../App';
 import { generateLine, GenerateBreak, EditOp, editLine } from '../llm';
 import {
@@ -250,6 +250,7 @@ export default function VersoScreen({ navigation, route }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <Workbench size="normal">
         {/* Mode selector */}
         <View style={styles.modeRow}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -420,6 +421,7 @@ export default function VersoScreen({ navigation, route }: Props) {
         </View>
 
         <View style={styles.bottomPad} />
+        </Workbench>
       </ScrollView>
     </KeyboardAvoidingView>
   );

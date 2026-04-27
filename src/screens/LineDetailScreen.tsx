@@ -18,7 +18,7 @@ import {
   toggleLineFavorite,
   Line,
 } from '../db/database';
-import { Header } from '../components';
+import { Header, Workbench } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 
 type Props = {
@@ -210,6 +210,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <Workbench size="narrow">
         <View style={styles.artifact} testID="line-artifact">
           <Text style={styles.modeLabel}>{line.mode}</Text>
           <Text style={styles.lineContent} selectable>{line.content}</Text>
@@ -255,6 +256,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
         >
           <Text style={styles.releaseText}>release this line</Text>
         </TouchableOpacity>
+        </Workbench>
       </ScrollView>
     </View>
   );
