@@ -67,14 +67,13 @@ export const TIDE_STATES = [
   'storm front',
   'low tide',
   'heavy current',
-  'golden hour calm',
+  'slack water',
   'building chop',
   'dead calm',
 ];
 
 // Tide colors stay inside the muted ocean family — variations of teal,
-// sea-glass, kelp, and mist. Even "golden hour calm" is rendered as a
-// warm-tinted teal so the whole atlas reads as one mesmerizing surface.
+// sea-glass, kelp, and mist.
 export const TIDE_COLORS: Record<string, string> = {
   'glass water': '#5C9AA0',         // pale cool sea glass
   'rising swell': '#3A7880',        // deeper cool turquoise
@@ -82,7 +81,7 @@ export const TIDE_COLORS: Record<string, string> = {
   'storm front': '#1F3A3F',         // storm-dimmed deep
   'low tide': '#6A8E91',            // bleached cool kelp
   'heavy current': '#2C5A5C',       // submerged channel
-  'golden hour calm': '#6E9A9C',    // dusk teal (no warm cast)
+  'slack water': '#6E9A9C',         // dusk teal — the pause between tides
   'building chop': '#456E70',       // grey-teal chop
   'dead calm': '#163034',           // abyss
 };
@@ -194,12 +193,18 @@ export const TERRAIN_HINTS = [
 // breaks here and are wired to LLM generation (see src/llm.ts). The local
 // fallback banks below are used when the LLM is unreachable.
 export const VERSO_MODES = [
-  { id: 'complete',      label: 'complete',      hint: 'fill the blanks' },
-  { id: 'paradox',       label: 'paradox',       hint: 'a truth that undoes itself' },
-  { id: 'aphorism',      label: 'aphorism',      hint: 'a single line, sharpened' },
-  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other' },
-  { id: 'distill',       label: 'distill',       hint: 'shorter, truer' },
-  { id: 'invert',        label: 'invert',        hint: 'flip it on its head' },
+  { id: 'complete',      label: 'complete',      hint: 'fill the blanks',
+    subtitle: 'finish the line' },
+  { id: 'paradox',       label: 'paradox',       hint: 'a truth that undoes itself',
+    subtitle: 'two truths pulling against each other' },
+  { id: 'aphorism',      label: 'aphorism',      hint: 'a single line, sharpened',
+    subtitle: 'a truth that wants to become portable' },
+  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other',
+    subtitle: 'the split between belief and behavior' },
+  { id: 'distill',       label: 'distill',       hint: 'shorter, truer',
+    subtitle: 'cut until only the truth is left' },
+  { id: 'invert',        label: 'invert',        hint: 'flip it on its head',
+    subtitle: 'turn the line inside out' },
 ] as const;
 export type VersoMode = typeof VERSO_MODES[number]['id'];
 

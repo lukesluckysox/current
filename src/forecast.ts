@@ -150,7 +150,7 @@ function inferSource(
   if (lastLine.terrain && /sharp|hardened|narrow|tender/i.test(lastLine.terrain)) {
     return 'body pressure';
   }
-  if (lastLine.tide && /low tide|dead calm|golden hour|glass water/i.test(lastLine.tide)) {
+  if (lastLine.tide && /low tide|dead calm|slack water|golden hour|glass water/i.test(lastLine.tide)) {
     return 'quiet after release';
   }
   if (lastLine.tide && /storm front|building chop|heavy current|rising swell/i.test(lastLine.tide)) {
@@ -163,7 +163,7 @@ function inferSource(
 
 function inferTexture(fragment: FragmentContext, lastLine: Line | null): Texture {
   const tide = (fragment.tide ?? lastLine?.tide ?? '').toLowerCase();
-  if (/glass water|dead calm|golden hour/.test(tide)) return 'glass';
+  if (/glass water|dead calm|slack water|golden hour/.test(tide)) return 'glass';
   if (/storm front|building chop|heavy current/.test(tide)) return 'choppy';
   if (/rising swell|offshore winds/.test(tide)) return 'light texture';
   const terrain = (fragment.terrain ?? lastLine?.terrain ?? '').toLowerCase();
@@ -564,7 +564,7 @@ export function readCurrent(
   if (filterKind === 'tide') {
     if (/low tide|dead calm/i.test(filterValue)) parts.push('deep pull, low visibility');
     else if (/storm front|building chop|heavy current/i.test(filterValue)) parts.push('strong set, hold on');
-    else if (/glass water|golden hour|offshore/i.test(filterValue)) parts.push('glass — long sight lines');
+    else if (/glass water|slack water|golden hour|offshore/i.test(filterValue)) parts.push('glass — long sight lines');
     else parts.push('a steady current');
   } else if (filterKind === 'terrain') {
     if (/sharp|hardened/i.test(filterValue)) parts.push('hard ground · short rides');

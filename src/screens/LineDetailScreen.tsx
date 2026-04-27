@@ -50,7 +50,7 @@ function sourceForLine(line: Line): string {
   if (line.constellation) return 'old conversation';
   if (line.mode === 'paradox' || line.mode === 'invert') return 'contradiction';
   if (line.terrain && /sharp|hardened|narrow|tender/i.test(line.terrain)) return 'body pressure';
-  if (line.tide && /low tide|dead calm|golden hour|glass water/i.test(line.tide)) return 'quiet after release';
+  if (line.tide && /low tide|dead calm|slack water|golden hour|glass water/i.test(line.tide)) return 'quiet after release';
   if (line.tide && /storm front|building chop|heavy current|rising swell/i.test(line.tide)) return 'fresh swell';
   if (/never|always|but|yet|still|even though|paradox/i.test(line.content)) return 'contradiction';
   if (line.mode === 'complete' || line.mode === 'aphorism' || line.mode === 'distill') return 'returning memory';

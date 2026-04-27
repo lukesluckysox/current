@@ -247,6 +247,14 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   const modeMeta = VERSO_MODES.find((m) => m.id === mode)!;
 
+  // Seed-state language: how much material is on the canvas?
+  // blank ocean (no seed) → small swell (a few words) → formed set (most lines).
+  const seedLen = shaped.trim().length;
+  const seedState =
+    seedLen === 0 ? 'blank ocean' :
+    seedLen < 40  ? 'small swell' :
+    'formed set';
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -286,12 +294,16 @@ export default function VersoScreen({ navigation, route }: Props) {
             ))}
           </ScrollView>
         </View>
-        <Text style={styles.modeHint}>{modeMeta.hint}</Text>
+        <Text style={styles.modeHint} testID={`mode-hint-${mode}`}>{modeMeta.hint}</Text>
+        <Text style={styles.modeSubtitle} testID={`mode-subtitle-${mode}`}>
+          {modeMeta.subtitle}
+        </Text>
 
         {mode === 'complete' ? (
           <>
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>generate a blank</Text>
+              <Text style={styles.sectionLabel}>pick a break</Text>
+              <Text style={styles.sectionAside}>sometimes the break calls first.</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -320,10 +332,10 @@ export default function VersoScreen({ navigation, route }: Props) {
                   onPress={() => handleGenerate()}
                   style={styles.generateButton}
                   activeOpacity={0.8}
-                  accessibilityLabel="generate new template"
+                  accessibilityLabel="another set"
                   testID="generate-template"
                 >
-                  <Text style={styles.generateButtonText}>generate ↻</Text>
+                  <Text style={styles.generateButtonText}>another set ↻</Text>
                 </TouchableOpacity>
               </View>
 
@@ -468,17 +480,22 @@ export default function VersoScreen({ navigation, route }: Props) {
                   style={[styles.generateButton, generating && styles.saveButtonDisabled]}
                   activeOpacity={0.8}
                   disabled={generating}
-                  accessibilityLabel={`generate ${mode}`}
+                  accessibilityLabel={`take the drop on ${mode}`}
                   testID={`generate-${mode}`}
                 >
                   <Text style={styles.generateButtonText}>
-                    {generating ? 'thinking…' : 'generate ✦'}
+                    {generating ? 'reading the water…' : 'take the drop ✦'}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
             {isLlmMode(mode) && generateError && (
               <Text style={styles.generateError}>{generateError}</Text>
+            )}
+            {isLlmMode(mode) && (
+              <Text style={styles.seedState} testID={`seed-state-${mode}`}>
+                {seedState}
+              </Text>
             )}
             <TextInput
               value={shaped}
@@ -558,6 +575,29 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
+  },
+  modeSubtitle: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: 2,
+    paddingBottom: Spacing.xs,
+  },
+  sectionAside: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  seedState: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
   },
   section: {
     padding: Spacing.lg,
