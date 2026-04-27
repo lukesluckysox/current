@@ -1146,30 +1146,25 @@ type TidalChartProps = {
   testID?: string;
 };
 
-const CHART_WIDTH_SAMPLES = 48;
 const CHART_HEIGHT = 64;
 
-function buildTideCurve(now: Date) {
+function tidePhase(now: Date) {
   const baseHours = now.getHours() + now.getMinutes() / 60;
-  const points = Array.from({ length: CHART_WIDTH_SAMPLES }, (_, i) => {
-    const t = baseHours - 12 + (i / (CHART_WIDTH_SAMPLES - 1)) * 24;
-    const phase = (((t % 12.42) + 12.42) % 12.42) / 12.42;
-    const level = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
-    return { t, level };
-  });
-  const nowIdx = Math.round(((CHART_WIDTH_SAMPLES - 1) * 12) / 24);
-  return { points, nowIdx };
+  const cycle = 12.42;
+  const phase = (((baseHours % cycle) + cycle) % cycle) / cycle;
+  const level = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
+  const slope = Math.cos(phase * Math.PI * 2);
+  return { level, slope };
 }
 
 export function TidalChart({ totalCount, phaseHint, testID }: TidalChartProps) {
   const now = new Date();
-  const { points, nowIdx } = buildTideCurve(now);
-  const segments = points.length - 1;
-  const segmentPct = 100 / segments;
+  const { level, slope } = tidePhase(now);
+  const phaseLabel = phaseHint ?? (slope >= 0 ? 'flood' : 'ebb');
 
-  const nowPoint = points[nowIdx];
-  const next = points[Math.min(points.length - 1, nowIdx + 1)];
-  const phaseLabel = phaseHint ?? (next.level >= nowPoint.level ? 'flood' : 'ebb');
+  // One clean horizontal line. The "now" dot rides along it on the x-axis,
+  // its position derived from the live tide level (left = low, right = high).
+  const nowLeftPct = level * 100;
 
   return (
     <View style={chartStyles.container} testID={testID ?? 'tidal-chart'} accessibilityLabel="tide of the archive">
@@ -1179,35 +1174,8 @@ export function TidalChart({ totalCount, phaseHint, testID }: TidalChartProps) {
       </View>
 
       <View style={chartStyles.chart}>
-        {points.slice(0, -1).map((p, i) => {
-          const nxt = points[i + 1];
-          const x1 = i * segmentPct;
-          const y1 = (1 - p.level) * 100;
-          const y2 = (1 - nxt.level) * 100;
-          const dx = segmentPct;
-          const dy = y2 - y1;
-          const lengthPct = Math.sqrt(dx * dx + dy * dy);
-          const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-          return (
-            <View
-              key={`seg-${i}`}
-              style={[
-                chartStyles.segment,
-                {
-                  left: `${x1}%`,
-                  top: `${y1}%`,
-                  width: `${lengthPct}%`,
-                  transform: [{ rotate: `${angleDeg}deg` }],
-                },
-              ]}
-            />
-          );
-        })}
-
-        <View style={[chartStyles.nowDot, {
-          left: `${nowIdx * segmentPct}%`,
-          top: `${(1 - points[nowIdx].level) * 100}%`,
-        }]} />
+        <View style={chartStyles.line} />
+        <View style={[chartStyles.nowDot, { left: `${nowLeftPct}%` }]} />
       </View>
 
       {typeof totalCount === 'number' && (
@@ -1246,15 +1214,19 @@ const chartStyles = StyleSheet.create({
   chart: {
     height: CHART_HEIGHT,
     position: 'relative',
+    justifyContent: 'center',
   },
-  segment: {
+  line: {
     position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
     height: 1,
     backgroundColor: Colors.sand,
-    transformOrigin: 'left center',
   },
   nowDot: {
     position: 'absolute',
+    top: '50%',
     width: 6,
     height: 6,
     borderRadius: 3,
