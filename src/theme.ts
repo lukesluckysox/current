@@ -1,20 +1,25 @@
 import { Platform } from 'react-native';
 
+// Palette: muted turquoise / teal / ocean.
+// Semantic names are preserved (amber, sand, navy) so the rest of the app
+// continues to compile, but their hex values have been shifted into a
+// low-saturation ocean family — sea-glass, deep teal, dusk ocean, mist —
+// for a quieter, more mesmerizing surface than the previous blue-and-gold.
 export const Colors = {
-  deepNavy: '#0A1628',
-  navy: '#162235',
-  card: '#1C2E42',
-  cardAlt: '#213349',
-  border: '#2A4060',
-  borderLight: '#3A5070',
-  sand: '#C4A882',
-  sandLight: '#D4B896',
-  saltWhite: '#F0EDE8',
-  amber: '#C48B2F',
-  amberLight: '#D4A040',
-  muted: '#6B7F8F',
-  mutedLight: '#8A9BAC',
-  error: '#C4614A',
+  deepNavy: '#071A1F',     // abyssal teal — app background
+  navy: '#0E2429',         // dusk ocean — nav surfaces
+  card: '#143036',         // submerged stone — primary surface
+  cardAlt: '#1A3A41',      // tide pool — secondary surface
+  border: '#22454D',       // kelp shadow
+  borderLight: '#345A62',  // mist border
+  sand: '#7FB5AE',         // sea glass — primary warm-ish text accent
+  sandLight: '#A6CFC7',    // foam mist — softer secondary
+  saltWhite: '#E8EFEB',    // cool salt — primary readable text
+  amber: '#5FA29A',        // muted turquoise — primary accent (was golden)
+  amberLight: '#7FBDB4',   // lifted aqua
+  muted: '#5E7E83',        // drift grey-teal
+  mutedLight: '#86A2A6',   // overcast
+  error: '#A35E50',        // rust coral, desaturated
 };
 
 export const Fonts = {
@@ -64,16 +69,19 @@ export const TIDE_STATES = [
   'dead calm',
 ];
 
+// Tide colors stay inside the muted ocean family — variations of teal,
+// sea-glass, kelp, and mist. Even "golden hour calm" is rendered as a
+// warm-tinted teal so the whole atlas reads as one mesmerizing surface.
 export const TIDE_COLORS: Record<string, string> = {
-  'glass water': '#4A7FA5',
-  'rising swell': '#2E6B8A',
-  'offshore winds': '#6A9BB5',
-  'storm front': '#2A3D50',
-  'low tide': '#8A7A5A',
-  'heavy current': '#2A5A6A',
-  'golden hour calm': '#C48B2F',
-  'building chop': '#4A6070',
-  'dead calm': '#1A2D3A',
+  'glass water': '#5E9B95',         // pale sea glass
+  'rising swell': '#3D7A78',        // deeper turquoise
+  'offshore winds': '#7FB5AE',      // foam mist teal
+  'storm front': '#1F3A3F',         // storm-dimmed deep
+  'low tide': '#6F8A82',            // sun-bleached kelp
+  'heavy current': '#2C5A5C',       // submerged channel
+  'golden hour calm': '#86A597',    // warm-tinted teal (no longer gold)
+  'building chop': '#456E70',       // grey-teal chop
+  'dead calm': '#163034',           // abyss
 };
 
 export const VERSO_TEMPLATES = [

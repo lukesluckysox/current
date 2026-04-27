@@ -293,19 +293,19 @@ function renderLineToImageWeb(line: Line): boolean {
     if (!ctx) return false;
 
     // Background
-    ctx.fillStyle = '#0A1628';
+    ctx.fillStyle = Colors.deepNavy;
     ctx.fillRect(0, 0, W, H);
 
     // Subtle horizon band
-    ctx.fillStyle = '#162235';
+    ctx.fillStyle = Colors.navy;
     ctx.fillRect(0, H * 0.62, W, H * 0.38);
 
-    // Amber accent line
-    ctx.fillStyle = '#C48B2F';
+    // Accent line — muted turquoise
+    ctx.fillStyle = Colors.amber;
     ctx.fillRect(80, 80, 4, 120);
 
     // Body text
-    ctx.fillStyle = '#F0EDE8';
+    ctx.fillStyle = Colors.saltWhite;
     ctx.font = '500 56px serif';
     ctx.textBaseline = 'top';
     const words = line.content.split(/\s+/);
@@ -327,10 +327,10 @@ function renderLineToImageWeb(line: Line): boolean {
     if (bufferLine) ctx.fillText(bufferLine, x, y);
 
     // Footer mark
-    ctx.fillStyle = '#6B7F8F';
+    ctx.fillStyle = Colors.muted;
     ctx.font = '400 24px sans-serif';
     ctx.fillText('SWELL', 80, H - 110);
-    ctx.fillStyle = '#8A9BAC';
+    ctx.fillStyle = Colors.mutedLight;
     ctx.font = 'italic 22px serif';
     ctx.fillText(line.mode, 80, H - 70);
 

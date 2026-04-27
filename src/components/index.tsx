@@ -333,7 +333,7 @@ const currentStyles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#0E1B2D',
+    backgroundColor: Colors.navy,
     borderLeftWidth: 2,
     borderLeftColor: Colors.amber,
   },
@@ -407,7 +407,7 @@ const waveStyles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#0E1B2D',
+    backgroundColor: Colors.navy,
   },
   header: {
     flexDirection: 'row',
@@ -472,7 +472,7 @@ const waveStyles = StyleSheet.create({
   miniBar: {
     width: '100%',
     borderRadius: 2,
-    backgroundColor: '#2E6B8A66',
+    backgroundColor: '#3D7A7866',
   },
   miniBarNow: {
     backgroundColor: Colors.amber + 'CC',
@@ -503,7 +503,7 @@ const waveStyles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     borderRadius: Radius.sm,
-    backgroundColor: '#0A1628',
+    backgroundColor: Colors.deepNavy,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
@@ -539,7 +539,7 @@ const waveStyles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#0A1628',
+    backgroundColor: Colors.deepNavy,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: 'hidden',
@@ -865,7 +865,7 @@ const chartStyles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: '#0E1B2D',
+    backgroundColor: Colors.navy,
   },
   header: {
     flexDirection: 'row',
@@ -887,7 +887,7 @@ const chartStyles = StyleSheet.create({
   },
   chart: {
     height: CHART_HEIGHT,
-    backgroundColor: '#0A1628',
+    backgroundColor: Colors.deepNavy,
     borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -922,7 +922,7 @@ const chartStyles = StyleSheet.create({
   },
   fillBar: {
     flex: 1,
-    backgroundColor: '#2E6B8A',
+    backgroundColor: '#3D7A78',
   },
   nowLine: {
     position: 'absolute',
