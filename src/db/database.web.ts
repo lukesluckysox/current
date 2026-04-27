@@ -7,6 +7,7 @@ export type LineMode =
   | 'paradox'
   | 'distill'
   | 'aphorism'
+  | 'contradiction'
   | 'invert';
 
 export type Line = {

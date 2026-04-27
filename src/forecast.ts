@@ -6,6 +6,7 @@
 // of-day astrology, no random feed.
 
 import type { Line, LineMode } from './db/database';
+import { findCurrents, dominantBreak, CurrentSummary, detectEcho, Echo } from './patterns';
 
 export type ForecastConditions = 'glass' | 'clean' | 'fair' | 'building' | 'fading' | 'choppy';
 export type TidePhase = 'low' | 'flood' | 'high' | 'ebb';
@@ -58,6 +59,19 @@ export type Forecast = {
 
   // Optional resurface candidate: a line worth pulling up under current conditions.
   resurface: Line | null;
+
+  // Returning currents: tags or words that recur across saved lines. Empty
+  // when the user does not yet have enough material for a pattern.
+  currents: CurrentSummary[];
+
+  // Interpretive synthesis: one short, in-world sentence summarizing the
+  // dominant break and current. e.g. "freedom keeps returning · contradiction
+  // is the dominant break."
+  interpretive: string | null;
+
+  // Echo: when an active fragment touches a returning current. Surfaces the
+  // older line as a "return to this" affordance.
+  echo: Echo | null;
 };
 
 const DIRECTIONS: Direction[] = ['NW', 'W', 'SW', 'S', 'SE', 'E', 'NE', 'N'];
@@ -401,8 +415,34 @@ export function computeForecast(
   // Resurface candidate.
   const resurface = pickResurface(sortedDesc, fragment, conditions, tidePhase);
 
-  // Action recommendation.
-  const action = recommendAction(hasFragment, source, conditions, lastLine, !!resurface);
+  // Pattern memory: returning currents and dominant break.
+  const currents = findCurrents(sortedDesc, 4);
+  const domBreak = dominantBreak(sortedDesc);
+  const echo = detectEcho(
+    fragment.text,
+    { tide: fragment.tide, terrain: fragment.terrain, constellation: fragment.constellation },
+    currents,
+    sortedDesc,
+  );
+
+  // Interpretive line: terse, in-world. Only emitted when we actually have
+  // pattern signal — otherwise the forecast stays poetic.
+  let interpretive: string | null = null;
+  if (currents.length > 0 || domBreak) {
+    const bits: string[] = [];
+    const top = currents[0];
+    if (top) {
+      const word = top.kind === 'word' ? top.value : top.value.toLowerCase();
+      bits.push(`${word} keeps returning`);
+    }
+    if (domBreak) bits.push(`${domBreak} is the dominant break`);
+    interpretive = bits.join(' · ') || null;
+  }
+
+  // Action recommendation. If we caught an echo, prefer "return to this".
+  const action = echo
+    ? { kind: 'resurface' as const, label: 'return to this →', hint: 'this current has returned' }
+    : recommendAction(hasFragment, source, conditions, lastLine, !!resurface);
 
   // Reading: explain the signal in surf-forecaster language.
   const reading = buildReading({
@@ -446,7 +486,10 @@ export function computeForecast(
     source,
     action,
     series: normalised,
-    resurface,
+    resurface: echo ? echo.line : resurface,
+    currents,
+    interpretive,
+    echo,
   };
 }
 

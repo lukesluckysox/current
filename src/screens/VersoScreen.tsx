@@ -19,11 +19,16 @@ import {
   LOCAL_FALLBACK_LINES,
 } from '../theme';
 import {
-  addLine, addCustomTemplate, getCustomTemplates,
+  addLine, addCustomTemplate, getCustomTemplates, getLines, getConfig, setConfig, Line,
 } from '../db/database';
 import { Header, EmptyState, Pill } from '../components';
 import { RootStackParamList } from '../../App';
-import { generateLine, GenerateBreak } from '../llm';
+import { generateLine, GenerateBreak, editLine, EditOp } from '../llm';
+import {
+  buildLexicon, findCurrents, dominantBreak,
+  readBreakLocal, restraint as readRestraint,
+  applyFeedback, emptyStyleHints, StyleHints, ResonanceVote,
+} from '../patterns';
 
 const LLM_MODES: VersoMode[] = ['aphorism', 'paradox', 'contradiction'];
 
@@ -126,7 +131,11 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [topic, setTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [editing, setEditing] = useState<EditOp | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [allLines, setAllLines] = useState<Line[]>([]);
+  const [styleHints, setStyleHints] = useState<StyleHints>(emptyStyleHints());
+  const [lastFeedback, setLastFeedback] = useState<ResonanceVote | null>(null);
 
   useEffect(() => {
     if (seedContent) setShaped(seedContent);
@@ -140,6 +149,19 @@ export default function VersoScreen({ navigation, route }: Props) {
   const load = useCallback(async () => {
     const custom = await getCustomTemplates();
     setCustomTemplates(custom.map((c) => c.template));
+    const lines = await getLines();
+    setAllLines(lines);
+    const raw = await getConfig('style_hints_v1');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as StyleHints;
+        if (parsed && Array.isArray(parsed.held) && Array.isArray(parsed.wanted)) {
+          setStyleHints(parsed);
+        }
+      } catch {
+        // ignore
+      }
+    }
   }, []);
 
   useFocusEffect(
@@ -193,16 +215,36 @@ export default function VersoScreen({ navigation, route }: Props) {
     navigation.navigate('Lines');
   }
 
+  // Context packet sent with /api/generate. Built from the saved lines, the
+  // active fragment's tags, the user's lexicon, and any persisted style hints.
+  const contextPacket = useMemo(() => {
+    const lex = buildLexicon(allLines, 8).map((e) => e.word);
+    const cur = findCurrents(allLines, 4).map((c) =>
+      c.kind === 'word' ? c.value : `${c.kind}:${c.value}`,
+    );
+    const dom = dominantBreak(allLines);
+    return {
+      tide: null,
+      terrain: null,
+      constellation: null,
+      lexicon: lex,
+      currents: cur,
+      dominantBreak: dom ?? null,
+      styleHints: [...styleHints.wanted, ...styleHints.held.slice(0, 4)].slice(0, 6),
+    };
+  }, [allLines, styleHints]);
+
   async function handleGenerateShaped() {
     if (!isLlmMode(mode) || generating) return;
     setGenerating(true);
     setGenerateError(null);
+    setLastFeedback(null);
     // Seed: prefer the user's free-text canvas (their own thinking) over the
     // navigation-time seedContent, since the canvas may have been edited.
     const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
     const previous = shaped;
     try {
-      const result = await generateLine(mode, seed);
+      const result = await generateLine(mode, seed, contextPacket);
       if (result.ok) {
         setShaped(result.line);
       } else {
@@ -227,6 +269,46 @@ export default function VersoScreen({ navigation, route }: Props) {
     }
   }
 
+  async function handleEdit(op: EditOp) {
+    if (!isLlmMode(mode) || editing || generating || !shaped.trim()) return;
+    setEditing(op);
+    setGenerateError(null);
+    const previous = shaped;
+    try {
+      const result = await editLine(op, shaped, mode);
+      if (result.ok) {
+        setShaped(result.line);
+      } else {
+        setShaped(previous);
+        const labels: Record<string, string> = {
+          timeout: 'slow connection',
+          unavailable: 'live model offline',
+          rate_limited: 'too many in a moment',
+          empty: 'model went quiet',
+          bad_request: 'try a longer line first',
+          network: 'offline',
+        };
+        setGenerateError(labels[result.error.kind] ?? 'edit unavailable');
+      }
+    } catch {
+      setGenerateError('offline');
+    } finally {
+      setEditing(null);
+    }
+  }
+
+  async function handleFeedback(vote: ResonanceVote) {
+    if (!shaped.trim()) return;
+    setLastFeedback(vote);
+    const next = applyFeedback(styleHints, vote, shaped);
+    setStyleHints(next);
+    try {
+      await setConfig('style_hints_v1', JSON.stringify(next));
+    } catch {
+      // best-effort; non-persistent fallback is fine
+    }
+  }
+
   async function handleSaveCustomTemplate() {
     const t = customTemplate.trim();
     if (!t || !t.includes(' _ ')) {
@@ -246,6 +328,12 @@ export default function VersoScreen({ navigation, route }: Props) {
   );
 
   const modeMeta = VERSO_MODES.find((m) => m.id === mode)!;
+
+  // Why-this-break recommendation, computed locally from the canvas. Updates
+  // as the user types but stays cheap (regex-based) — no network calls.
+  const breakRead = useMemo(() => readBreakLocal(shaped), [shaped]);
+  // Restraint signal: when the fragment is too thin to shape.
+  const restraintSig = useMemo(() => readRestraint(shaped), [shaped]);
 
   // Seed-state language: how much material is on the canvas?
   // blank ocean (no seed) → small swell (a few words) → formed set (most lines).
@@ -512,8 +600,74 @@ export default function VersoScreen({ navigation, route }: Props) {
               multiline
               selectionColor={Colors.amber}
               autoCorrect={false}
-              editable={!generating}
+              editable={!generating && !editing}
             />
+
+            {restraintSig && (
+              <Text style={styles.restraintText} testID="restraint-signal">
+                {restraintSig.message}
+              </Text>
+            )}
+
+            {breakRead && !restraintSig && (mode === 'aphorism' || mode === 'paradox' || mode === 'contradiction') && (
+              <View style={styles.whyBreakRow} testID="why-break">
+                <Text style={styles.whyBreakLabel}>break reader · {breakRead.type}</Text>
+                <Text style={styles.whyBreakText}>{breakRead.reason}</Text>
+                {breakRead.type !== mode && (
+                  <TouchableOpacity
+                    onPress={() => setMode(breakRead.type)}
+                    style={styles.whyBreakSwitch}
+                    activeOpacity={0.7}
+                    accessibilityLabel={`switch to ${breakRead.type}`}
+                  >
+                    <Text style={styles.whyBreakSwitchText}>switch to {breakRead.type} →</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {isLlmMode(mode) && shaped.trim().length > 0 && !restraintSig && (
+              <View style={styles.editRow}>
+                <Text style={styles.editLabel}>shape this line</Text>
+                <View style={styles.editButtons}>
+                  {(['clearer', 'sharper', 'stranger'] as EditOp[]).map((op) => (
+                    <TouchableOpacity
+                      key={op}
+                      onPress={() => handleEdit(op)}
+                      style={[styles.editButton, editing === op && styles.editButtonActive]}
+                      activeOpacity={0.75}
+                      disabled={!!editing || generating}
+                      testID={`edit-${op}`}
+                      accessibilityLabel={`make it ${op}`}
+                    >
+                      <Text style={styles.editButtonText}>
+                        {editing === op ? '…' : op}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {isLlmMode(mode) && shaped.trim().length > 0 && !restraintSig && (
+              <View style={styles.feedbackRow}>
+                <Text style={styles.feedbackLabel}>resonance</Text>
+                {(['held', 'closer', 'too-clean', 'too-soft', 'too-obvious', 'missed'] as ResonanceVote[]).map((v) => (
+                  <TouchableOpacity
+                    key={v}
+                    onPress={() => handleFeedback(v)}
+                    style={[styles.feedbackChip, lastFeedback === v && styles.feedbackChipActive]}
+                    activeOpacity={0.7}
+                    testID={`feedback-${v}`}
+                    accessibilityLabel={`mark line as ${v}`}
+                  >
+                    <Text style={[styles.feedbackChipText, lastFeedback === v && styles.feedbackChipTextActive]}>
+                      {v.replace('-', ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <View style={styles.saveRow}>
               <Text style={styles.charCount}>
@@ -859,5 +1013,109 @@ const styles = StyleSheet.create({
   },
   bottomPad: {
     height: 48,
+  },
+  restraintText: {
+    color: Colors.amberLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    marginBottom: Spacing.sm,
+  },
+  whyBreakRow: {
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.amber,
+    paddingLeft: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  whyBreakLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  whyBreakText: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+  },
+  whyBreakSwitch: {
+    marginTop: Spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  whyBreakSwitchText: {
+    color: Colors.amber,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+  },
+  editRow: {
+    marginBottom: Spacing.sm,
+  },
+  editLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  editButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  editButtonActive: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber + '22',
+  },
+  editButtonText: {
+    color: Colors.sand,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  feedbackLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginRight: Spacing.xs,
+  },
+  feedbackChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  feedbackChipActive: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber + '22',
+  },
+  feedbackChipText: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xs,
+  },
+  feedbackChipTextActive: {
+    color: Colors.sandLight,
   },
 });

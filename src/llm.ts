@@ -1,4 +1,4 @@
-// Thin client wrapper around POST /api/generate.
+// Thin client wrapper around the Swell server API.
 //
 // In production the Expo web bundle is served by the same Node process that
 // owns /api, so a relative path works. For local Expo dev (where Metro serves
@@ -6,6 +6,7 @@
 // at build time, e.g. EXPO_PUBLIC_API_BASE=http://localhost:3000.
 
 export type GenerateBreak = 'aphorism' | 'paradox' | 'contradiction';
+export type EditOp = 'clearer' | 'sharper' | 'stranger';
 
 export type GenerateError =
   | { kind: 'timeout' }
@@ -15,27 +16,37 @@ export type GenerateError =
   | { kind: 'network' }
   | { kind: 'empty' };
 
+// Compact context packet sent with /api/generate. Caller is responsible for
+// truncating / anonymising — server will also drop oversized fields.
+export type GenerateContext = {
+  tide?: string | null;
+  terrain?: string | null;
+  constellation?: string | null;
+  lexicon?: string[];
+  currents?: string[];
+  dominantBreak?: string | null;
+  styleHints?: string[];
+};
+
 const TIMEOUT_MS = 8000;
 
 function apiBase(): string {
-  // EXPO_PUBLIC_* is the only env shape Expo exposes to the client bundle.
-  // Defaults to '' so calls go to the same origin (Express in production).
   const fromEnv =
     typeof process !== 'undefined' && process.env && (process.env.EXPO_PUBLIC_API_BASE as string | undefined);
   return (fromEnv || '').replace(/\/+$/, '');
 }
 
-export async function generateLine(
-  type: GenerateBreak,
-  seed?: string
-): Promise<{ ok: true; line: string } | { ok: false; error: GenerateError }> {
+async function call<T>(
+  pathname: string,
+  body: object,
+): Promise<{ ok: true; data: T } | { ok: false; error: GenerateError }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${apiBase()}/api/generate`, {
+    const res = await fetch(`${apiBase()}${pathname}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, seed: seed?.slice(0, 280) ?? '' }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -45,10 +56,8 @@ export async function generateLine(
       if (res.status === 504) return { ok: false, error: { kind: 'timeout' } };
       return { ok: false, error: { kind: 'network' } };
     }
-    const data = (await res.json()) as { line?: string };
-    const line = (data.line || '').trim();
-    if (!line) return { ok: false, error: { kind: 'empty' } };
-    return { ok: true, line };
+    const data = (await res.json()) as T;
+    return { ok: true, data };
   } catch (err) {
     if ((err as { name?: string })?.name === 'AbortError') {
       return { ok: false, error: { kind: 'timeout' } };
@@ -57,4 +66,52 @@ export async function generateLine(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function generateLine(
+  type: GenerateBreak,
+  seed?: string,
+  context?: GenerateContext,
+): Promise<{ ok: true; line: string } | { ok: false; error: GenerateError }> {
+  const result = await call<{ line?: string }>('/api/generate', {
+    type,
+    seed: seed?.slice(0, 280) ?? '',
+    context: context ?? null,
+  });
+  if (!result.ok) return result;
+  const line = (result.data.line || '').trim();
+  if (!line) return { ok: false, error: { kind: 'empty' } };
+  return { ok: true, line };
+}
+
+export async function editLine(
+  op: EditOp,
+  line: string,
+  type?: GenerateBreak,
+): Promise<{ ok: true; line: string } | { ok: false; error: GenerateError }> {
+  if (!line.trim()) return { ok: false, error: { kind: 'bad_request' } };
+  const result = await call<{ line?: string }>('/api/edit', {
+    op,
+    line: line.slice(0, 280),
+    type,
+  });
+  if (!result.ok) return result;
+  const out = (result.data.line || '').trim();
+  if (!out) return { ok: false, error: { kind: 'empty' } };
+  return { ok: true, line: out };
+}
+
+export type WhyBreakResult = {
+  type: GenerateBreak;
+  reason: string;
+  source?: 'rule' | 'default';
+};
+
+export async function readBreak(
+  text: string,
+): Promise<{ ok: true; data: WhyBreakResult } | { ok: false; error: GenerateError }> {
+  if (!text.trim()) return { ok: false, error: { kind: 'bad_request' } };
+  const result = await call<WhyBreakResult>('/api/why-break', { text: text.slice(0, 280) });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data };
 }

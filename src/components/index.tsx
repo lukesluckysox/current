@@ -246,6 +246,16 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
 
       <Text style={waveStyles.phrase}>{f.phrase}</Text>
       <Text style={waveStyles.reading} testID="forecast-reading">{f.reading}</Text>
+      {f.interpretive && (
+        <Text style={waveStyles.interpretive} testID="forecast-interpretive">
+          {f.interpretive}
+        </Text>
+      )}
+      {f.echo && (
+        <Text style={waveStyles.echo} testID="forecast-echo">
+          this current has returned · what changed since {ageHint(f.echo.line.created_at)}?
+        </Text>
+      )}
 
       <View style={waveStyles.actionRow}>
         <Text style={waveStyles.actionHint}>{f.action.hint}</Text>
@@ -284,6 +294,15 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1).trimEnd() + '…';
+}
+
+function ageHint(createdAtSec: number): string {
+  const ageDays = (Date.now() / 1000 - createdAtSec) / 86400;
+  if (ageDays < 1) return 'earlier today';
+  if (ageDays < 2) return 'yesterday';
+  if (ageDays < 7) return `${Math.max(1, Math.round(ageDays))}d ago`;
+  if (ageDays < 30) return `${Math.round(ageDays / 7)}w ago`;
+  return `${Math.round(ageDays / 30)}mo ago`;
 }
 
 function ForecastChip({ label, sub }: { label: string; sub: string }) {
@@ -590,6 +609,22 @@ const waveStyles = StyleSheet.create({
     marginTop: Spacing.xs,
     lineHeight: 22,
     paddingHorizontal: Spacing.sm,
+  },
+  interpretive: {
+    color: Colors.sand,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
+  echo: {
+    color: Colors.amberLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
   },
   actionRow: {
     flexDirection: 'row',
