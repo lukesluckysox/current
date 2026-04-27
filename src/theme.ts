@@ -5,6 +5,9 @@ import { Platform } from 'react-native';
 // continues to compile, but their hex values have been shifted into a
 // low-saturation ocean family — sea-glass, deep teal, dusk ocean, mist —
 // for a quieter, more mesmerizing surface than the previous blue-and-gold.
+// Hues are deliberately pulled toward 185–200° (cool teal/aqua) and away from
+// 150–170° (which can read as olive/khaki/yellow against a dark surface).
+// Saturation is kept low; lightness does the lifting.
 export const Colors = {
   deepNavy: '#071A1F',     // abyssal teal — app background
   navy: '#0E2429',         // dusk ocean — nav surfaces
@@ -12,11 +15,11 @@ export const Colors = {
   cardAlt: '#1A3A41',      // tide pool — secondary surface
   border: '#22454D',       // kelp shadow
   borderLight: '#345A62',  // mist border
-  sand: '#7FB5AE',         // sea glass — primary warm-ish text accent
-  sandLight: '#A6CFC7',    // foam mist — softer secondary
-  saltWhite: '#E8EFEB',    // cool salt — primary readable text
-  amber: '#5FA29A',        // muted turquoise — primary accent (was golden)
-  amberLight: '#7FBDB4',   // lifted aqua
+  sand: '#6FA6AC',         // cool sea glass — primary text accent
+  sandLight: '#9CC4C8',    // cool foam mist — softer secondary
+  saltWhite: '#E6EEF0',    // salt mist — primary readable text
+  amber: '#4F8F95',        // dusk teal — primary accent (no warm cast)
+  amberLight: '#6FB0B5',   // lifted cool aqua
   muted: '#5E7E83',        // drift grey-teal
   mutedLight: '#86A2A6',   // overcast
   error: '#A35E50',        // rust coral, desaturated
@@ -73,13 +76,13 @@ export const TIDE_STATES = [
 // sea-glass, kelp, and mist. Even "golden hour calm" is rendered as a
 // warm-tinted teal so the whole atlas reads as one mesmerizing surface.
 export const TIDE_COLORS: Record<string, string> = {
-  'glass water': '#5E9B95',         // pale sea glass
-  'rising swell': '#3D7A78',        // deeper turquoise
-  'offshore winds': '#7FB5AE',      // foam mist teal
+  'glass water': '#5C9AA0',         // pale cool sea glass
+  'rising swell': '#3A7880',        // deeper cool turquoise
+  'offshore winds': '#6FA6AC',      // foam mist teal
   'storm front': '#1F3A3F',         // storm-dimmed deep
-  'low tide': '#6F8A82',            // sun-bleached kelp
+  'low tide': '#6A8E91',            // bleached cool kelp
   'heavy current': '#2C5A5C',       // submerged channel
-  'golden hour calm': '#86A597',    // warm-tinted teal (no longer gold)
+  'golden hour calm': '#6E9A9C',    // dusk teal (no warm cast)
   'building chop': '#456E70',       // grey-teal chop
   'dead calm': '#163034',           // abyss
 };

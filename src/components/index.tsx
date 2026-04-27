@@ -472,7 +472,7 @@ const waveStyles = StyleSheet.create({
   miniBar: {
     width: '100%',
     borderRadius: 2,
-    backgroundColor: '#3D7A7866',
+    backgroundColor: '#3A788066',
   },
   miniBarNow: {
     backgroundColor: Colors.amber + 'CC',
@@ -760,7 +760,7 @@ export function TidalChart({ markers, totalCount, phaseHint, testID }: TidalChar
           ))}
         </View>
 
-        {/* now indicator — vertical amber line */}
+        {/* now indicator — vertical teal accent line */}
         <View style={[chartStyles.nowLine, { left: `${nowIdx * segmentPct}%` }]} />
         <View style={[chartStyles.nowDot, {
           left: `${nowIdx * segmentPct}%`,
@@ -922,7 +922,7 @@ const chartStyles = StyleSheet.create({
   },
   fillBar: {
     flex: 1,
-    backgroundColor: '#3D7A78',
+    backgroundColor: '#3A7880',
   },
   nowLine: {
     position: 'absolute',
