@@ -22,6 +22,9 @@ import {
 import { Header, SwellInput, WaveForecast } from '../components';
 import { RootStackParamList } from '../../App';
 import { computeForecast, Forecast } from '../forecast';
+import {
+  getLiveConditions, deriveInnerVector, matchInnerToLive, LiveMatch,
+} from '../surfData';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Drift'>;
@@ -41,6 +44,12 @@ export default function DriftScreen({ navigation }: Props) {
   const [allLines, setAllLines] = useState<Line[]>([]);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
+  // Live surf-data resonance. We fetch real marine/wind conditions for a
+  // curated set of breaks once per focus (cache throttles to 30 min) and
+  // pick the break whose live water most resembles the inner read.
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'loading' | 'ready' | 'offline'>('idle');
+  const [liveData, setLiveData] = useState<Awaited<ReturnType<typeof getLiveConditions>> | null>(null);
+
   const load = useCallback(async () => {
     const recent = await getLines();
     setAllLines(recent);
@@ -54,6 +63,31 @@ export default function DriftScreen({ navigation }: Props) {
     }, [load])
   );
 
+  // Pull live surf data on focus. Cached at the module level so re-focusing
+  // is essentially free until the TTL expires.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLiveStatus((prev) => (prev === 'ready' ? 'ready' : 'loading'));
+      getLiveConditions()
+        .then((data) => {
+          if (cancelled) return;
+          if (data && data.length > 0) {
+            setLiveData(data);
+            setLiveStatus('ready');
+          } else {
+            setLiveStatus('offline');
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setLiveStatus('offline');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   // Compute the forecast from real signals each render. Cheap — pure function
   // over already-loaded state — and lets it react as the user types.
   const forecast: Forecast = React.useMemo(
@@ -63,6 +97,23 @@ export default function DriftScreen({ navigation }: Props) {
     ),
     [allLines, content, tide, terrain, constellation]
   );
+
+  // Match the inner read against live break conditions. Falls back to
+  // the engine's deterministic resemblance if live data isn't ready.
+  const liveMatch: LiveMatch | null = React.useMemo(() => {
+    if (!liveData || liveData.length === 0) return null;
+    const inner = deriveInnerVector({
+      swellHeight: forecast.swellHeight,
+      swellHeightHigh: forecast.swellHeightHigh,
+      period: forecast.period,
+      texture: forecast.texture,
+      tidePhase: forecast.tidePhase,
+      source: forecast.source,
+      conditions: forecast.conditions,
+      direction: forecast.direction,
+    });
+    return matchInnerToLive(inner, liveData);
+  }, [liveData, forecast]);
 
   async function handleSave() {
     if (!content.trim()) return;
@@ -264,6 +315,8 @@ export default function DriftScreen({ navigation }: Props) {
         <WaveForecast
           forecast={forecast}
           savedToday={savedToday}
+          liveMatch={liveMatch}
+          liveStatus={liveStatus}
           onAction={handleForecastAction}
           onResurface={() => forecast.resurface && showResurface(forecast.resurface)}
         />

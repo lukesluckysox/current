@@ -164,11 +164,16 @@ export function Divider() {
 // renders the result with a "reading" and a recommended writing action.
 
 import type { Forecast } from '../forecast';
+import type { LiveMatch } from '../surfData';
 
 type WaveForecastProps = {
   /** Pre-computed forecast from the engine. */
   forecast: Forecast;
   savedToday?: number;
+  /** Live surf-break match, when real marine data is available. */
+  liveMatch?: LiveMatch | null;
+  /** Status of the live-data fetch, for loading/offline copy. */
+  liveStatus?: 'idle' | 'loading' | 'ready' | 'offline';
   /** Tap on the recommended-action button. */
   onAction?: () => void;
   /** Tap on the resurface affordance, if a candidate exists. */
@@ -188,7 +193,9 @@ const CONDITIONS_LABEL: Record<string, string> = {
   choppy:   'building chop',
 };
 
-export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, testID }: WaveForecastProps) {
+export function WaveForecast({
+  forecast: f, savedToday, liveMatch, liveStatus, onAction, onResurface, testID,
+}: WaveForecastProps) {
   const heightLow = f.swellHeight.toFixed(1);
   const heightHigh = f.swellHeightHigh.toFixed(1);
   const conditionsLabel = CONDITIONS_LABEL[f.conditions] ?? f.conditions;
@@ -262,9 +269,7 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
       </View>
 
       <Text style={waveStyles.phrase}>{f.phrase}</Text>
-      <Text style={waveStyles.resemblance} testID="forecast-resemblance">
-        most resembles · <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
-      </Text>
+      <ResemblanceBlock forecast={f} liveMatch={liveMatch} liveStatus={liveStatus} />
       <Text style={waveStyles.reading} testID="forecast-reading">{f.reading}</Text>
       {f.interpretive && (
         <Text style={waveStyles.interpretive} testID="forecast-interpretive">
@@ -310,6 +315,70 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
       )}
 
       <ForecastInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
+    </View>
+  );
+}
+
+// ─── ResemblanceBlock ────────────────────────────────────────────────────────
+//
+// Shows the real-world break the inner read currently most resembles. When
+// live marine data is available, names a real break by its current
+// conditions and adds a one-line "why". When live data is loading or
+// unreachable, falls back to the engine's deterministic resemblance and
+// notes the offline state quietly. Never claims to be a real surf report.
+
+function ResemblanceBlock({
+  forecast: f, liveMatch, liveStatus,
+}: {
+  forecast: Forecast;
+  liveMatch?: LiveMatch | null;
+  liveStatus?: 'idle' | 'loading' | 'ready' | 'offline';
+}) {
+  if (liveMatch) {
+    const c = liveMatch.conditions;
+    return (
+      <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
+        <Text style={waveStyles.resemblance}>
+          most resembles live water at{' '}
+          <Text style={waveStyles.resemblanceName}>{c.break.name}</Text>
+          <Text style={waveStyles.resemblanceRegion}> · {c.break.region}</Text>
+        </Text>
+        <Text style={waveStyles.liveSummary} testID="forecast-live-summary">
+          {liveMatch.summary}
+        </Text>
+        <Text style={waveStyles.liveReason} testID="forecast-live-reason">
+          {liveMatch.reason}
+        </Text>
+      </View>
+    );
+  }
+  // Loading state: brief, in voice. Doesn't replace existing fallback feel.
+  if (liveStatus === 'loading') {
+    return (
+      <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
+        <Text style={waveStyles.resemblance}>
+          most resembles ·{' '}
+          <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
+        </Text>
+        <Text style={waveStyles.liveStatus} testID="forecast-live-status">
+          listening for live water…
+        </Text>
+      </View>
+    );
+  }
+  // Offline / unavailable: show the deterministic felt analogy with a quiet
+  // note that the live signal is missing.
+  return (
+    <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
+      <Text style={waveStyles.resemblance}>
+        most resembles ·{' '}
+        <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
+      </Text>
+      {liveStatus === 'offline' && (
+        <Text style={waveStyles.liveStatus} testID="forecast-live-status">
+          live water unreachable — felt analogy only
+        </Text>
+      )}
     </View>
   );
 }
@@ -390,7 +459,7 @@ function ForecastInfoSheet({ visible, onClose }: { visible: boolean; onClose: ()
           <View style={infoStyles.section}>
             <Text style={infoStyles.term}>most resembles</Text>
             <Text style={infoStyles.body}>
-              a real-world surf break the inner conditions feel closest to. a felt analogy, not a real forecast.
+              when reachable, the app pulls live marine conditions for a small set of real surf breaks (Open-Meteo, public data) and names the one whose water most resembles your inner read right now. metaphorical resonance — not a real surf report.
             </Text>
           </View>
 
@@ -809,6 +878,39 @@ const waveStyles = StyleSheet.create({
   resemblanceName: {
     color: Colors.amber,
     fontFamily: Fonts.serif,
+  },
+  resemblanceRegion: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xs,
+  },
+  resemblanceBlock: {
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  liveSummary: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  liveReason: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  liveStatus: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
+    marginTop: 2,
+    letterSpacing: 0.5,
+    fontStyle: 'italic',
   },
   reading: {
     color: Colors.mutedLight,
