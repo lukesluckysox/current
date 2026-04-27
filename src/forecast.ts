@@ -87,6 +87,17 @@ export type Forecast = {
   // Internal compass — surface wind & deep swell, paired with wave height.
   surfaceWind: CompassReading;
   deepSwell: CompassReading;
+
+  // Real-world surf break the inner conditions most resemble. Not real
+  // weather, not real surf data — a felt analogy from the same signals.
+  resemblance: BreakResemblance;
+};
+
+export type BreakResemblance = {
+  /** Break name, e.g. "Rincon", "Pipeline". */
+  name: string;
+  /** One short evocative line about the feel, e.g. "clean wrapping pulse". */
+  feel: string;
 };
 
 const DIRECTIONS: Direction[] = ['NW', 'W', 'SW', 'S', 'SE', 'E', 'NE', 'N'];
@@ -552,6 +563,82 @@ function pickResurface(
 
 // ─── public entry point ──────────────────────────────────────────────────────
 
+// Map derived inner conditions to a real-world break the user's session
+// "most resembles" — purely felt analogy, never claimed as real surf data.
+// Driver: swell height (size), period (organisation), texture (cleanliness),
+// tide phase, source (origin of the swell).
+function inferBreak(args: {
+  swellHeight: number;
+  swellHeightHigh: number;
+  period: number;
+  texture: Texture;
+  tidePhase: TidePhase;
+  source: ForecastSource;
+  conditions: ForecastConditions;
+}): BreakResemblance {
+  const { swellHeight, swellHeightHigh, period, texture, tidePhase, source, conditions } = args;
+  const peak = swellHeightHigh;
+
+  // Heaviest first — large, hollow, charged.
+  if (peak >= 6.0 && source === 'contradiction') {
+    return { name: 'Pipeline', feel: 'heavy, square, no margin for hesitation' };
+  }
+  if (peak >= 6.0 && (source === 'body pressure' || texture === 'choppy')) {
+    return { name: 'Teahupoʻo', feel: 'thick water, weight all at once' };
+  }
+  if (peak >= 5.5 && (tidePhase === 'flood' || tidePhase === 'high') && period >= 14) {
+    return { name: 'Mavericks', feel: 'long lines, deep water, real consequence' };
+  }
+  if (peak >= 5.0 && period >= 13 && texture !== 'choppy') {
+    return { name: 'Nazaré', feel: 'mountainous swell pulled up out of nothing' };
+  }
+
+  // Long-period, organised, clean.
+  if (period >= 13 && conditions === 'clean' && (source === 'returning memory' || source === 'old conversation')) {
+    return { name: 'Rincon', feel: 'a long right that wraps and keeps wrapping' };
+  }
+  if (period >= 12 && texture === 'glass' && conditions !== 'choppy') {
+    return { name: 'J-Bay', feel: 'glass and speed, a line that keeps drawing forward' };
+  }
+  if (peak >= 4.0 && period >= 12 && conditions === 'building') {
+    return { name: 'Cloudbreak', feel: 'open ocean swell finding its shape' };
+  }
+
+  // Punchy, mid-size, sharp.
+  if (peak >= 3.5 && conditions === 'building' && (source === 'fresh swell' || source === 'unfinished thought')) {
+    return { name: 'Lower Trestles', feel: 'punchy, playful, asking for one clean turn' };
+  }
+  if (texture === 'choppy' && peak >= 3.0) {
+    return { name: 'Ocean Beach', feel: 'cold, disorganised, pushes back' };
+  }
+
+  // Soft, forgiving, mid-tide.
+  if (peak <= 3.0 && (tidePhase === 'high' || tidePhase === 'flood') && (texture === 'glass' || texture === 'light texture')) {
+    return { name: 'Malibu First Point', feel: 'soft, forgiving, a long open shoulder' };
+  }
+  if (peak <= 2.5 && conditions === 'glass') {
+    return { name: 'Waikiki Canoes', feel: 'small, warm, easy to step into' };
+  }
+
+  // Quiet — barely breaking.
+  if (conditions === 'fading' || (tidePhase === 'low' && peak <= 2.0)) {
+    return { name: 'Doheny', feel: 'tiny rolling sets, more memory than wave' };
+  }
+
+  // Returning, slow-building, longer-period — feels like a point lighting up.
+  if (period >= 11 && (source === 'returning memory' || source === 'old conversation')) {
+    return { name: 'Bells Beach', feel: 'a steady reef-point pulse you can hear coming' };
+  }
+
+  // Fragmenty / fresh — short-period beachbreak energy.
+  if (period <= 9 && (source === 'fresh swell' || source === 'unfinished thought')) {
+    return { name: 'Hossegor', feel: 'short-period beachbreak, lots of motion at once' };
+  }
+
+  // Reasonable default — workable, with texture.
+  return { name: 'Bondi', feel: 'workable surf, a little texture, plenty to ride' };
+}
+
 export function computeForecast(
   lines: Line[],
   fragment: FragmentContext,
@@ -665,6 +752,17 @@ export function computeForecast(
   const surfaceWind = inferSurfaceWind(fragment, lastLine, texture, source);
   const deepSwell = inferDeepSwell(currents, domBreak, source, tidePhase, sortedDesc.length);
 
+  // Real-world break the inner conditions most resemble.
+  const resemblance = inferBreak({
+    swellHeight,
+    swellHeightHigh,
+    period,
+    texture,
+    tidePhase,
+    source,
+    conditions,
+  });
+
   // Reading: explain the signal in surf-forecaster language.
   const reading = buildReading({
     fragmentLen: fragment.text.length,
@@ -713,6 +811,7 @@ export function computeForecast(
     echo,
     surfaceWind,
     deepSwell,
+    resemblance,
   };
 }
 

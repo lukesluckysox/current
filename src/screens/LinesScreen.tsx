@@ -9,10 +9,11 @@ import {
 import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
-import { getLines, Line, LineMode } from '../db/database';
+import { getLines, deleteLine, Line, LineMode } from '../db/database';
 import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 import { readCurrent } from '../forecast';
+import { confirm } from '../confirm';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Lines'>;
@@ -158,6 +159,19 @@ export default function LinesScreen({ navigation, route }: Props) {
     setPage(0);
   }
 
+  async function handleRelease(line: Line) {
+    const ok = await confirm({
+      title: 'Release this line?',
+      message: 'It will leave the archive.',
+      confirmLabel: 'Release',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteLine(line.id);
+    await load();
+  }
+
   const totalCount = filteredLines.length;
 
   return (
@@ -257,6 +271,7 @@ export default function LinesScreen({ navigation, route }: Props) {
                 line={line}
                 onPress={() => navigation.navigate('LineDetail', { lineId: line.id })}
                 onTagPress={followCurrent}
+                onRelease={() => handleRelease(line)}
               />
             ))}
 
@@ -272,6 +287,7 @@ export default function LinesScreen({ navigation, route }: Props) {
                     line={line}
                     onPress={() => navigation.navigate('LineDetail', { lineId: line.id })}
                     onTagPress={followCurrent}
+                    onRelease={() => handleRelease(line)}
                   />
                 ))}
 
@@ -319,11 +335,12 @@ function DepthBand({ label, sublabel }: { label: string; sublabel?: string }) {
 }
 
 function LineRow({
-  line, onPress, onTagPress,
+  line, onPress, onTagPress, onRelease,
 }: {
   line: Line;
   onPress: () => void;
   onTagPress: (f: LineFilter) => void;
+  onRelease: () => void;
 }) {
   const tags = tagsForLine(line);
   return (
@@ -342,9 +359,6 @@ function LineRow({
             <TouchableOpacity
               key={`${t.kind}:${t.value}`}
               onPress={(e) => {
-                // Prevent the row's onPress from firing when tapping a tag.
-                // RN absorbs propagation by default for nested Touchables, but
-                // calling stopPropagation on web is harmless.
                 if ((e as any)?.stopPropagation) (e as any).stopPropagation();
                 onTagPress(t);
               }}
@@ -364,6 +378,19 @@ function LineRow({
         <View style={styles.footerRight}>
           {line.is_seed === 1 && <Text style={styles.seedIcon}>sample</Text>}
           {line.is_favorite === 1 && <Text style={styles.starIcon}>★</Text>}
+          <TouchableOpacity
+            onPress={(e) => {
+              if ((e as any)?.stopPropagation) (e as any).stopPropagation();
+              onRelease();
+            }}
+            activeOpacity={0.6}
+            style={styles.releaseButton}
+            accessibilityLabel="release this line — remove from archive"
+            testID={`release-${line.id}`}
+            hitSlop={8}
+          >
+            <Text style={styles.releaseText}>release</Text>
+          </TouchableOpacity>
           <Text style={styles.openHint}>open →</Text>
         </View>
       </View>
@@ -507,6 +534,20 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: FontSizes.xs,
     letterSpacing: 1,
+  },
+  releaseButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  releaseText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   pager: {
     flexDirection: 'row',

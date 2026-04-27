@@ -262,6 +262,9 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
       </View>
 
       <Text style={waveStyles.phrase}>{f.phrase}</Text>
+      <Text style={waveStyles.resemblance} testID="forecast-resemblance">
+        most resembles · <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
+      </Text>
       <Text style={waveStyles.reading} testID="forecast-reading">{f.reading}</Text>
       {f.interpretive && (
         <Text style={waveStyles.interpretive} testID="forecast-interpretive">
@@ -326,26 +329,23 @@ function CompassRow({ surface, deep }: { surface: CompassReading; deep: CompassR
         kind="surface"
         title="surface wind"
         chip={compassChip(surface)}
-        phrase={surface.phrase}
       />
       <View style={waveStyles.compassDivider} />
       <CompassCell
         kind="deep"
         title="deep swell"
         chip={compassChip(deep)}
-        phrase={deep.phrase}
       />
     </View>
   );
 }
 
 function CompassCell({
-  kind, title, chip, phrase,
+  kind, title, chip,
 }: {
   kind: 'surface' | 'deep';
   title: string;
   chip: string;
-  phrase: string;
 }) {
   return (
     <View style={waveStyles.compassCell}>
@@ -357,9 +357,6 @@ function CompassCell({
         minimumFontScale={0.8}
       >
         {chip}
-      </Text>
-      <Text style={waveStyles.compassPhrase} numberOfLines={2}>
-        {phrase}
       </Text>
     </View>
   );
@@ -391,16 +388,9 @@ function ForecastInfoSheet({ visible, onClose }: { visible: boolean; onClose: ()
           </View>
 
           <View style={infoStyles.section}>
-            <Text style={infoStyles.term}>surface wind</Text>
+            <Text style={infoStyles.term}>most resembles</Text>
             <Text style={infoStyles.body}>
-              what is moving across the surface — this fragment, this hour.
-            </Text>
-          </View>
-
-          <View style={infoStyles.section}>
-            <Text style={infoStyles.term}>deep swell</Text>
-            <Text style={infoStyles.body}>
-              the longer pattern traveling underneath — what keeps returning.
+              a real-world surf break the inner conditions feel closest to. a felt analogy, not a real forecast.
             </Text>
           </View>
 
@@ -808,6 +798,18 @@ const waveStyles = StyleSheet.create({
     fontSize: FontSizes.md,
     textAlign: 'center',
   },
+  resemblance: {
+    color: Colors.sand,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  resemblanceName: {
+    color: Colors.amber,
+    fontFamily: Fonts.serif,
+  },
   reading: {
     color: Colors.mutedLight,
     fontFamily: Fonts.serifItalic,
@@ -984,35 +986,28 @@ const infoStyles = StyleSheet.create({
 
 // ─── TidalChart ──────────────────────────────────────────────────────────────
 //
-// A line tidal chart for Lines/Depth Stack. Replaces the stacked depth
-// gauge. Renders a smooth tide curve with high/low markers, a current-time
-// indicator, and optional saved-line markers placed along the curve. Pure
-// View-based geometry — no SVG dependency.
+// A simple tide line for Lines/Depth Stack. One curve, one "now" dot —
+// no bands, no fills, no legend. The archive should feel like the surface
+// of water, not a dashboard.
 
 export type TidalChartMarker = {
   id: number | string;
-  /** 0..1 horizontal position along the visible window */
   x: number;
-  /** display label, kept short */
   label?: string;
 };
 
 type TidalChartProps = {
-  /** Lines to seed marker positions, ordered most-recent first. */
+  /** Accepted for backwards compatibility; not rendered. */
   markers?: TidalChartMarker[];
-  /** Total saved-line count, surfaced as a quiet sublabel. */
   totalCount?: number;
-  /** Override the flood/ebb label; if set, derived from the saved-line rhythm. */
   phaseHint?: 'high' | 'low' | 'flood' | 'ebb';
   testID?: string;
 };
 
-const CHART_WIDTH_SAMPLES = 48; // resolution of the polyline
-const CHART_HEIGHT = 110;
+const CHART_WIDTH_SAMPLES = 48;
+const CHART_HEIGHT = 64;
 
 function buildTideCurve(now: Date) {
-  // Render a 24-hour window centred near "now" (-12h .. +12h-ish) so the
-  // user sees both a previous high/low and what's coming.
   const baseHours = now.getHours() + now.getMinutes() / 60;
   const points = Array.from({ length: CHART_WIDTH_SAMPLES }, (_, i) => {
     const t = baseHours - 12 + (i / (CHART_WIDTH_SAMPLES - 1)) * 24;
@@ -1020,76 +1015,36 @@ function buildTideCurve(now: Date) {
     const level = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
     return { t, level };
   });
-
-  // Identify the two highs and two lows in window for labelling.
-  const highs: number[] = [];
-  const lows: number[] = [];
-  for (let i = 1; i < points.length - 1; i++) {
-    const a = points[i - 1].level, b = points[i].level, c = points[i + 1].level;
-    if (b > a && b > c) highs.push(i);
-    if (b < a && b < c) lows.push(i);
-  }
-
   const nowIdx = Math.round(((CHART_WIDTH_SAMPLES - 1) * 12) / 24);
-  return { points, highs, lows, nowIdx };
+  return { points, nowIdx };
 }
 
-function fmtTime(decimalHours: number): string {
-  let h = Math.floor(((decimalHours % 24) + 24) % 24);
-  const m = Math.round((decimalHours - Math.floor(decimalHours)) * 60);
-  const ampm = h < 12 ? 'am' : 'pm';
-  h = h % 12;
-  if (h === 0) h = 12;
-  return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
-}
-
-export function TidalChart({ markers, totalCount, phaseHint, testID }: TidalChartProps) {
+export function TidalChart({ totalCount, phaseHint, testID }: TidalChartProps) {
   const now = new Date();
-  const curve = buildTideCurve(now);
-  const { points, highs, lows, nowIdx } = curve;
-
+  const { points, nowIdx } = buildTideCurve(now);
   const segments = points.length - 1;
   const segmentPct = 100 / segments;
 
-  // Map indices into chart label/marker info.
-  const highMarkers = highs.slice(0, 2).map((i) => ({
-    i,
-    timeLabel: fmtTime(points[i].t),
-  }));
-  const lowMarkers = lows.slice(0, 2).map((i) => ({
-    i,
-    timeLabel: fmtTime(points[i].t),
-  }));
-
-  // Determine flood/ebb at "now" for the heading. If a phaseHint is supplied,
-  // honour it so the chart reads the saved-line rhythm rather than wall clock.
   const nowPoint = points[nowIdx];
   const next = points[Math.min(points.length - 1, nowIdx + 1)];
   const phaseLabel = phaseHint ?? (next.level >= nowPoint.level ? 'flood' : 'ebb');
 
   return (
-    <View style={chartStyles.container} testID={testID ?? 'tidal-chart'} accessibilityLabel="tidal chart of saved lines">
+    <View style={chartStyles.container} testID={testID ?? 'tidal-chart'} accessibilityLabel="tide of the archive">
       <View style={chartStyles.header}>
         <Text style={chartStyles.label}>tide of the archive</Text>
         <Text style={chartStyles.state}>{phaseLabel}</Text>
       </View>
 
       <View style={chartStyles.chart}>
-        {/* horizontal mid-line: the surface */}
-        <View style={chartStyles.surfaceLine} />
-
-        {/* curve as a polyline of small rotated segments */}
         {points.slice(0, -1).map((p, i) => {
-          const next = points[i + 1];
+          const nxt = points[i + 1];
           const x1 = i * segmentPct;
           const y1 = (1 - p.level) * 100;
-          const y2 = (1 - next.level) * 100;
+          const y2 = (1 - nxt.level) * 100;
           const dx = segmentPct;
           const dy = y2 - y1;
-          // Use top/left/transform to avoid SVG.
           const lengthPct = Math.sqrt(dx * dx + dy * dy);
-          // We can't mix % rotation with absolute pixels reliably; instead
-          // render small absolutely positioned slabs sized in % of parent.
           const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
           return (
             <View
@@ -1107,110 +1062,15 @@ export function TidalChart({ markers, totalCount, phaseHint, testID }: TidalChar
           );
         })}
 
-        {/* fill below curve (subtle water shade) — built from vertical bars */}
-        <View style={chartStyles.fillRow} pointerEvents="none">
-          {points.map((p, i) => (
-            <View
-              key={`fill-${i}`}
-              style={[
-                chartStyles.fillBar,
-                { height: `${(1 - p.level) * 0 + p.level * 100}%` },
-              ]}
-            />
-          ))}
-        </View>
-
-        {/* now indicator — vertical teal accent line */}
-        <View style={[chartStyles.nowLine, { left: `${nowIdx * segmentPct}%` }]} />
         <View style={[chartStyles.nowDot, {
           left: `${nowIdx * segmentPct}%`,
           top: `${(1 - points[nowIdx].level) * 100}%`,
         }]} />
-
-        {/* high tide markers */}
-        {highMarkers.map((m) => (
-          <View
-            key={`high-${m.i}`}
-            style={[chartStyles.tideMark, {
-              left: `${m.i * segmentPct}%`,
-              top: `${(1 - points[m.i].level) * 100}%`,
-            }]}
-          >
-            <View style={chartStyles.tideMarkDotHigh} />
-          </View>
-        ))}
-        {/* low tide markers */}
-        {lowMarkers.map((m) => (
-          <View
-            key={`low-${m.i}`}
-            style={[chartStyles.tideMark, {
-              left: `${m.i * segmentPct}%`,
-              top: `${(1 - points[m.i].level) * 100}%`,
-            }]}
-          >
-            <View style={chartStyles.tideMarkDotLow} />
-          </View>
-        ))}
-
-        {/* saved-line markers placed along the curve */}
-        {(markers ?? []).slice(0, 6).map((mk) => {
-          const idx = Math.max(0, Math.min(points.length - 1, Math.round(mk.x * (points.length - 1))));
-          return (
-            <View
-              key={`mk-${mk.id}`}
-              style={[chartStyles.lineMark, {
-                left: `${idx * segmentPct}%`,
-                top: `${(1 - points[idx].level) * 100}%`,
-              }]}
-              accessibilityLabel={`saved line marker ${mk.label ?? mk.id}`}
-            />
-          );
-        })}
       </View>
 
-      <View style={chartStyles.timeAxis}>
-        {[...lowMarkers, ...highMarkers]
-          .sort((a, b) => a.i - b.i)
-          .map((m, idx, arr) => {
-            // Avoid label collisions — drop labels too close to neighbours.
-            if (idx > 0 && (m.i - arr[idx - 1].i) * segmentPct < 14) return null;
-            return (
-              <Text
-                key={`lbl-${m.i}`}
-                style={[chartStyles.timeLabel, { left: `${m.i * segmentPct}%` }]}
-              >
-                {m.timeLabel}
-              </Text>
-            );
-          })}
-        <Text style={[chartStyles.timeLabel, chartStyles.timeLabelNow, { left: `${nowIdx * segmentPct}%` }]}>now</Text>
-      </View>
-
-      <View style={chartStyles.legend}>
-        <LegendDot color={Colors.amber} label="high tide" />
-        <LegendDot color={Colors.sand} label="low tide" />
-        <LegendDot color={Colors.saltWhite} label="recent line" hollow />
-        {typeof totalCount === 'number' && (
-          <Text style={chartStyles.legendMeta}>{totalCount} held in the archive</Text>
-        )}
-      </View>
-    </View>
-  );
-}
-
-function LegendDot({ color, label, hollow }: { color: string; label: string; hollow?: boolean }) {
-  return (
-    <View style={chartStyles.legendItem}>
-      <View
-        style={[
-          chartStyles.legendDot,
-          {
-            backgroundColor: hollow ? 'transparent' : color,
-            borderColor: color,
-          },
-        ]}
-      />
-      <Text style={chartStyles.legendText}>{label}</Text>
+      {typeof totalCount === 'number' && (
+        <Text style={chartStyles.meta}>{totalCount} held in the archive</Text>
+      )}
     </View>
   );
 }
@@ -1222,10 +1082,6 @@ const chartStyles = StyleSheet.create({
     marginBottom: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.navy,
   },
   header: {
     flexDirection: 'row',
@@ -1247,138 +1103,26 @@ const chartStyles = StyleSheet.create({
   },
   chart: {
     height: CHART_HEIGHT,
-    backgroundColor: Colors.deepNavy,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
     position: 'relative',
-  },
-  surfaceLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    height: 1,
-    backgroundColor: Colors.border,
-    opacity: 0.6,
   },
   segment: {
     position: 'absolute',
-    height: 2,
+    height: 1,
     backgroundColor: Colors.sand,
     transformOrigin: 'left center',
-    borderRadius: 1,
-  },
-  fillRow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    top: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    opacity: 0.18,
-  },
-  fillBar: {
-    flex: 1,
-    backgroundColor: '#3A7880',
-  },
-  nowLine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: Colors.amber + '88',
   },
   nowDot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.amber,
-    marginLeft: -4,
-    marginTop: -4,
-    borderWidth: 1,
-    borderColor: Colors.deepNavy,
-  },
-  tideMark: {
-    position: 'absolute',
-    marginLeft: -5,
-    marginTop: -5,
-  },
-  tideMarkDotHigh: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.amber,
-    borderWidth: 1,
-    borderColor: Colors.deepNavy,
-  },
-  tideMarkDotLow: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.sand,
-    borderWidth: 1,
-    borderColor: Colors.deepNavy,
-  },
-  lineMark: {
     position: 'absolute',
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.saltWhite,
+    backgroundColor: Colors.amber,
     marginLeft: -3,
     marginTop: -3,
   },
-  timeAxis: {
-    height: 16,
-    marginTop: Spacing.xs,
-    position: 'relative',
-  },
-  timeLabel: {
-    position: 'absolute',
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-    letterSpacing: 0.5,
-    transform: [{ translateX: -16 }],
-    width: 50,
-    textAlign: 'center',
-  },
-  timeLabelNow: {
-    color: Colors.amber,
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+  meta: {
     marginTop: Spacing.sm,
-    gap: Spacing.md,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    marginRight: 6,
-  },
-  legendText: {
     color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-    letterSpacing: 1,
-  },
-  legendMeta: {
-    marginLeft: 'auto',
-    color: Colors.sand,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.sm,
   },
