@@ -246,7 +246,7 @@ export default function LinesScreen({ navigation, route }: Props) {
         {totalCount === 0 ? (
           <EmptyState
             title={tagFilter ? 'no lines on this current' : 'no lines yet'}
-            subtitle={tagFilter ? 'try a different current' : 'catch a fragment, shape it, keep it'}
+            subtitle={tagFilter ? 'try a different current' : 'drop in, shape it, keep it'}
           />
         ) : (
           <>

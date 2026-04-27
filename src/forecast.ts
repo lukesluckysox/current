@@ -270,7 +270,7 @@ function recommendAction(
       hint: 'last fragment unfinished',
     };
   }
-  return { kind: 'save', label: 'catch a fragment', hint: 'open water · listen' };
+  return { kind: 'save', label: 'drop in', hint: 'open water · listen' };
 }
 
 // ─── resurface candidate ─────────────────────────────────────────────────────

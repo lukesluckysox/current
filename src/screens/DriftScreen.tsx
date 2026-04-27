@@ -182,7 +182,7 @@ export default function DriftScreen({ navigation }: Props) {
           <SwellInput
             value={content}
             onChangeText={setContent}
-            placeholder="catch a fragment…"
+            placeholder="drop in…"
             multiline
             maxLength={200}
             style={styles.captureInput}
