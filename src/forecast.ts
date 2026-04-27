@@ -34,6 +34,17 @@ export type ForecastAction = {
   hint: string;
 };
 
+// Internal compass — two layered direction readings rendered alongside
+// wave height. Surface wind = what is moving across the user *now*
+// (immediate fragment / tide / terrain). Deep swell = the longer pattern
+// traveling underneath (returning currents / dominant break / forecast
+// source). Both carry a one-line interior phrase rather than weather.
+export type CompassReading = {
+  direction: Direction | null;   // null when slack / variable
+  label: string;                 // short tag e.g. "textured", "returning", "slack"
+  phrase: string;                // one-line interior reading
+};
+
 export type Forecast = {
   // Numeric readouts.
   swellHeight: number;        // ft (low end of the range)
@@ -72,6 +83,10 @@ export type Forecast = {
   // Echo: when an active fragment touches a returning current. Surfaces the
   // older line as a "return to this" affordance.
   echo: Echo | null;
+
+  // Internal compass — surface wind & deep swell, paired with wave height.
+  surfaceWind: CompassReading;
+  deepSwell: CompassReading;
 };
 
 const DIRECTIONS: Direction[] = ['NW', 'W', 'SW', 'S', 'SE', 'E', 'NE', 'N'];
@@ -243,6 +258,208 @@ const PHRASE_BANK: Record<ForecastConditions, string[]> = {
   fading:   ['the set is letting go', 'lines stretch and loosen', 'the water is releasing'],
   choppy:   ['building chop — hold lines short', 'wind on the page', 'distill before it slips'],
 };
+
+// ─── internal compass ────────────────────────────────────────────────────────
+//
+// Two readings, layered. Surface wind = whatever is moving across the
+// user right now (active fragment, tide tag, terrain). Deep swell = the
+// longer current underneath (returning patterns, dominant break, source
+// label). Each maps to one of eight compass points with a one-line
+// interior phrase. No real weather — purely an internal compass.
+//
+// Direction model (kept consistent everywhere):
+//   N  clarity / discipline / clean truth
+//   E  emergence / beginning / attention
+//   S  feeling / body / desire / memory
+//   W  return / reflection / shadow / integration
+//   NE new structure (clarity + emergence)
+//   SE soft admission (emergence + feeling)
+//   SW memory returning (feeling + return)
+//   NW hard reckoning (return + clarity)
+
+const SURFACE_WIND_PHRASES: Record<Direction, string> = {
+  N:  'hard clarity moving across the water',
+  NE: 'a new structure rising into view',
+  E:  'something beginning at the surface',
+  SE: 'a soft admission at the edge',
+  S:  'feeling brushing the surface',
+  SW: 'memory drifting back across',
+  W:  'reflection moving with the wind',
+  NW: 'hard reckoning moving across',
+};
+
+const DEEP_SWELL_PHRASES: Record<Direction, string> = {
+  N:  'discipline traveling underneath',
+  NE: 'a new shape forming below',
+  E:  'something emerging from below',
+  SE: 'a quiet admission underneath',
+  S:  'old feeling underneath',
+  SW: 'memory returning from below',
+  W:  'an old shadow circling back',
+  NW: 'a long reckoning underneath',
+};
+
+const SURFACE_LABELS: Record<Direction, string> = {
+  N: 'clear', NE: 'forming', E: 'opening', SE: 'softening',
+  S: 'feeling', SW: 'returning', W: 'reflecting', NW: 'reckoning',
+};
+
+const DEEP_LABELS: Record<Direction, string> = {
+  N: 'discipline', NE: 'forming', E: 'emerging', SE: 'admitting',
+  S: 'feeling', SW: 'returning', W: 'shadow', NW: 'reckoning',
+};
+
+// Surface wind reads the *immediate* fragment and tags. This is what is
+// moving across the surface now — it changes as the user types.
+function inferSurfaceWind(
+  fragment: FragmentContext,
+  lastLine: Line | null,
+  texture: Texture,
+  source: ForecastSource,
+): CompassReading {
+  const text = fragment.text.trim();
+  const tide = (fragment.tide ?? lastLine?.tide ?? '').toLowerCase();
+  const terrain = (fragment.terrain ?? lastLine?.terrain ?? '').toLowerCase();
+  const hasFragment = text.length > 0;
+
+  // Slack / variable when there is essentially no movement.
+  if (!hasFragment && !tide && !terrain && !lastLine) {
+    return {
+      direction: null,
+      label: 'slack',
+      phrase: 'no wind on the surface — variable',
+    };
+  }
+
+  // Direction inference, in priority order.
+  let direction: Direction = 'E';
+
+  if (source === 'contradiction') direction = 'NW'; // hard reckoning
+  else if (source === 'returning memory') direction = 'SW';
+  else if (source === 'body pressure') direction = 'S';
+  else if (source === 'old conversation') direction = 'W';
+  else if (source === 'fresh swell') direction = 'NE';
+  else if (source === 'unfinished thought') direction = 'E';
+  else if (source === 'quiet after release') direction = 'N';
+  else if (source === 'open water') direction = 'E';
+
+  // Texture nudges: choppy/textured pulls the surface toward NW (reckoning),
+  // glass pulls it toward N (clarity).
+  if (texture === 'glass' && (direction === 'E' || direction === 'NE')) direction = 'N';
+  if (texture === 'choppy') direction = direction === 'S' ? 'SW' : 'NW';
+
+  // Terrain nudges.
+  if (/sharp|hardened/.test(terrain)) direction = direction === 'E' ? 'NE' : direction;
+  if (/tender|porous|still/.test(terrain) && direction !== 'NW') direction = 'S';
+  if (/restless/.test(terrain) && (direction === 'E' || direction === 'N')) direction = 'NE';
+
+  const textureLabel: string = texture === 'glass' ? 'glassy'
+    : texture === 'light texture' ? 'light texture'
+    : texture === 'choppy' ? 'choppy'
+    : 'textured';
+
+  return {
+    direction,
+    label: textureLabel,
+    phrase: SURFACE_WIND_PHRASES[direction],
+  };
+}
+
+// Deep swell reads the *longer* pattern: returning currents, dominant
+// break, the source label. It changes slowly — by design.
+function inferDeepSwell(
+  currents: CurrentSummary[],
+  domBreak: LineMode | null,
+  source: ForecastSource,
+  tidePhase: TidePhase,
+  lineCount: number,
+): CompassReading {
+  // Not enough material yet — present as slack rather than guess.
+  if (lineCount < 3 && currents.length === 0) {
+    return {
+      direction: null,
+      label: 'open water',
+      phrase: 'no deep current yet — listen',
+    };
+  }
+
+  let direction: Direction = 'S';
+  let label = 'returning';
+
+  // Dominant break biases the deep direction.
+  if (domBreak === 'paradox') { direction = 'NW'; label = 'reckoning'; }
+  else if (domBreak === 'contradiction') { direction = 'NW'; label = 'reckoning'; }
+  else if (domBreak === 'aphorism') { direction = 'N'; label = 'discipline'; }
+  else if (domBreak === 'distill') { direction = 'N'; label = 'distilling'; }
+  else if (domBreak === 'invert') { direction = 'W'; label = 'inverting'; }
+  else if (domBreak === 'complete') { direction = 'NE'; label = 'forming'; }
+
+  // Top current refines it. Word currents pull south (feeling/memory);
+  // recurring tags pull along their tide/terrain hue.
+  const top = currents[0];
+  if (top) {
+    if (top.kind === 'word') {
+      // A returning word almost always reads as memory/feeling beneath.
+      direction = direction === 'NW' ? 'NW' : 'SW';
+      label = top.value.toLowerCase();
+    } else if (top.kind === 'tide') {
+      const v = top.value.toLowerCase();
+      if (/storm|chop|heavy/.test(v)) { direction = 'NW'; label = 'reckoning'; }
+      else if (/glass|slack|golden|offshore/.test(v)) { direction = 'N'; label = 'clear'; }
+      else if (/return|rising/.test(v)) { direction = 'SW'; label = 'returning'; }
+      else if (/low|dead/.test(v)) { direction = 'W'; label = 'reflecting'; }
+    } else if (top.kind === 'terrain') {
+      const v = top.value.toLowerCase();
+      if (/sharp|hardened/.test(v)) { direction = 'NW'; label = 'reckoning'; }
+      else if (/tender|porous|still/.test(v)) { direction = 'S'; label = 'feeling'; }
+      else if (/restless|narrow/.test(v)) { direction = 'NE'; label = 'forming'; }
+    } else if (top.kind === 'constellation') {
+      direction = 'W'; label = 'with ' + top.value.toLowerCase();
+    }
+  } else {
+    // No returning current. Fall back to source/tide phase.
+    if (source === 'contradiction') { direction = 'NW'; label = 'reckoning'; }
+    else if (source === 'returning memory') { direction = 'SW'; label = 'returning'; }
+    else if (source === 'body pressure') { direction = 'S'; label = 'feeling'; }
+    else if (source === 'fresh swell') { direction = 'NE'; label = 'forming'; }
+    else if (tidePhase === 'low') { direction = 'W'; label = 'quiet'; }
+    else if (tidePhase === 'high') { direction = 'N'; label = 'clear'; }
+  }
+
+  // Compose the phrase. If we have a top word/tag current, prefer a
+  // sentence that names what is returning over the generic phrase.
+  let phrase = DEEP_SWELL_PHRASES[direction];
+  if (top) {
+    const word = top.kind === 'word' ? top.value : top.value.toLowerCase();
+    if (top.kind === 'word') {
+      phrase = `${word} returning underneath`;
+    } else if (top.kind === 'constellation') {
+      phrase = `${word} moving below the surface`;
+    } else if (direction === 'NW') {
+      phrase = `${word} pressing up from below`;
+    }
+  }
+
+  // Fall back to a generic short label if the chosen one is too long for
+  // the chip. (Caller will truncate visually.)
+  return { direction, label, phrase };
+}
+
+// Render a compass reading's chip line, e.g. "NW · textured". Exposed so
+// the UI can build the same string without re-deriving direction logic.
+export function compassChip(r: CompassReading): string {
+  if (!r.direction) return r.label;
+  return `${r.direction} · ${r.label}`;
+}
+
+// Look up the short surface/deep label families. Exported for tests and
+// for the info-modal copy if it ever needs to render the legend.
+export function compassLegend(): {
+  surface: Record<Direction, string>;
+  deep: Record<Direction, string>;
+} {
+  return { surface: SURFACE_LABELS, deep: DEEP_LABELS };
+}
 
 // ─── action recommendation ───────────────────────────────────────────────────
 
@@ -444,6 +661,10 @@ export function computeForecast(
     ? { kind: 'resurface' as const, label: 'return to this →', hint: 'this current has returned' }
     : recommendAction(hasFragment, source, conditions, lastLine, !!resurface);
 
+  // Internal compass: surface wind (immediate) + deep swell (pattern).
+  const surfaceWind = inferSurfaceWind(fragment, lastLine, texture, source);
+  const deepSwell = inferDeepSwell(currents, domBreak, source, tidePhase, sortedDesc.length);
+
   // Reading: explain the signal in surf-forecaster language.
   const reading = buildReading({
     fragmentLen: fragment.text.length,
@@ -490,6 +711,8 @@ export function computeForecast(
     currents,
     interpretive,
     echo,
+    surfaceWind,
+    deepSwell,
   };
 }
 

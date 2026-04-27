@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Modal,
+  Pressable,
   TextInputProps,
   ViewStyle,
   TextStyle,
@@ -190,17 +192,30 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
   const heightLow = f.swellHeight.toFixed(1);
   const heightHigh = f.swellHeightHigh.toFixed(1);
   const conditionsLabel = CONDITIONS_LABEL[f.conditions] ?? f.conditions;
+  const [infoOpen, setInfoOpen] = useState(false);
 
   return (
     <View style={waveStyles.container} testID={testID ?? 'wave-forecast'}>
       <View style={waveStyles.header}>
         <Text style={waveStyles.label}>inner forecast</Text>
-        <Text style={waveStyles.state}>{conditionsLabel}</Text>
+        <View style={waveStyles.headerRight}>
+          <Text style={waveStyles.state}>{conditionsLabel}</Text>
+          <TouchableOpacity
+            onPress={() => setInfoOpen(true)}
+            style={waveStyles.infoButton}
+            activeOpacity={0.7}
+            accessibilityLabel="what this card means"
+            testID="forecast-info"
+            hitSlop={8}
+          >
+            <Text style={waveStyles.infoButtonText}>i</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={waveStyles.readoutRow}>
         <View style={waveStyles.heightBlock}>
-          <Text style={waveStyles.heightValue} accessibilityLabel={`line swell ${heightLow} to ${heightHigh} feet`}>
+          <Text style={waveStyles.heightValue} accessibilityLabel={`wave height ${heightLow} to ${heightHigh} feet`}>
             {heightLow}<Text style={waveStyles.heightDash}>–</Text>{heightHigh}
           </Text>
           <Text style={waveStyles.heightUnit}>ft · {f.texture}</Text>
@@ -228,6 +243,8 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
           </View>
         </View>
       </View>
+
+      <CompassRow surface={f.surfaceWind} deep={f.deepSwell} />
 
       <View style={waveStyles.chipRow}>
         <ForecastChip label={`${f.period}s`} sub="period" />
@@ -288,6 +305,133 @@ export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, t
       {typeof savedToday === 'number' && savedToday > 0 && (
         <Text style={waveStyles.savedToday}>{savedToday} caught today</Text>
       )}
+
+      <ForecastInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
+    </View>
+  );
+}
+
+// ─── CompassRow ──────────────────────────────────────────────────────────────
+//
+// Surface wind + deep swell side by side. Mobile-first, two equal columns.
+// Each cell shows direction + label as a chip and an interior phrase below.
+
+import type { CompassReading } from '../forecast';
+import { compassChip } from '../forecast';
+
+function CompassRow({ surface, deep }: { surface: CompassReading; deep: CompassReading }) {
+  return (
+    <View style={waveStyles.compassRow} testID="forecast-compass">
+      <CompassCell
+        kind="surface"
+        title="surface wind"
+        chip={compassChip(surface)}
+        phrase={surface.phrase}
+      />
+      <View style={waveStyles.compassDivider} />
+      <CompassCell
+        kind="deep"
+        title="deep swell"
+        chip={compassChip(deep)}
+        phrase={deep.phrase}
+      />
+    </View>
+  );
+}
+
+function CompassCell({
+  kind, title, chip, phrase,
+}: {
+  kind: 'surface' | 'deep';
+  title: string;
+  chip: string;
+  phrase: string;
+}) {
+  return (
+    <View style={waveStyles.compassCell}>
+      <Text style={waveStyles.compassTitle}>{title}</Text>
+      <Text
+        style={[waveStyles.compassChip, kind === 'deep' && waveStyles.compassChipDeep]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+      >
+        {chip}
+      </Text>
+      <Text style={waveStyles.compassPhrase} numberOfLines={2}>
+        {phrase}
+      </Text>
+    </View>
+  );
+}
+
+// ─── ForecastInfoSheet ───────────────────────────────────────────────────────
+//
+// Tasteful explanation of the inner-forecast card. Plain modal; tap the
+// backdrop or the close link to dismiss.
+
+function ForecastInfoSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={infoStyles.backdrop} onPress={onClose} testID="forecast-info-backdrop">
+        <Pressable style={infoStyles.sheet} onPress={() => {}}>
+          <Text style={infoStyles.eyebrow}>reading the card</Text>
+          <Text style={infoStyles.heading}>an internal compass</Text>
+
+          <View style={infoStyles.section}>
+            <Text style={infoStyles.term}>wave height</Text>
+            <Text style={infoStyles.body}>
+              the intensity of what is moving through you right now.
+            </Text>
+          </View>
+
+          <View style={infoStyles.section}>
+            <Text style={infoStyles.term}>surface wind</Text>
+            <Text style={infoStyles.body}>
+              what is moving across the surface — this fragment, this hour.
+            </Text>
+          </View>
+
+          <View style={infoStyles.section}>
+            <Text style={infoStyles.term}>deep swell</Text>
+            <Text style={infoStyles.body}>
+              the longer pattern traveling underneath — what keeps returning.
+            </Text>
+          </View>
+
+          <View style={infoStyles.compassBlock}>
+            <Text style={infoStyles.compassHeader}>directions</Text>
+            <View style={infoStyles.compassGrid}>
+              <CompassLegendRow dir="N" gloss="clarity" />
+              <CompassLegendRow dir="E" gloss="emergence" />
+              <CompassLegendRow dir="S" gloss="feeling" />
+              <CompassLegendRow dir="W" gloss="return" />
+              <CompassLegendRow dir="NE" gloss="new structure" />
+              <CompassLegendRow dir="SE" gloss="soft admission" />
+              <CompassLegendRow dir="SW" gloss="memory returning" />
+              <CompassLegendRow dir="NW" gloss="hard reckoning" />
+            </View>
+          </View>
+
+          <TouchableOpacity onPress={onClose} style={infoStyles.closeBtn} activeOpacity={0.7}>
+            <Text style={infoStyles.closeText}>close</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function CompassLegendRow({ dir, gloss }: { dir: string; gloss: string }) {
+  return (
+    <View style={infoStyles.legendRow}>
+      <Text style={infoStyles.legendDir}>{dir}</Text>
+      <Text style={infoStyles.legendGloss}>{gloss}</Text>
     </View>
   );
 }
@@ -465,6 +609,69 @@ const waveStyles = StyleSheet.create({
     color: Colors.amber,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.md,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  infoButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoButtonText: {
+    color: Colors.sand,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    lineHeight: FontSizes.sm + 2,
+  },
+  compassRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.deepNavy,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  compassCell: {
+    flex: 1,
+    paddingHorizontal: Spacing.xs,
+  },
+  compassDivider: {
+    width: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: Spacing.xs,
+  },
+  compassTitle: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  compassChip: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.md,
+    marginBottom: 2,
+  },
+  compassChipDeep: {
+    color: Colors.amberLight,
+  },
+  compassPhrase: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    lineHeight: 18,
   },
   readoutRow: {
     flexDirection: 'row',
@@ -675,6 +882,103 @@ const waveStyles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
     marginTop: Spacing.xs,
+  },
+});
+
+const infoStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: '#00000099',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  sheet: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+  },
+  eyebrow: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
+  heading: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xl,
+    marginBottom: Spacing.md,
+  },
+  section: {
+    marginBottom: Spacing.md,
+  },
+  term: {
+    color: Colors.amberLight,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.md,
+    marginBottom: 2,
+  },
+  body: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  compassBlock: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  compassHeader: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  compassGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  legendRow: {
+    width: '50%',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    paddingVertical: 4,
+  },
+  legendDir: {
+    color: Colors.sand,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
+    width: 36,
+  },
+  legendGloss: {
+    flex: 1,
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+  },
+  closeBtn: {
+    alignSelf: 'flex-end',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  closeText: {
+    color: Colors.sand,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
   },
 });
 
