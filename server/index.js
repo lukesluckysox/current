@@ -57,38 +57,47 @@ function rateLimit(req, res, next) {
 
 function systemPrompt() {
   return [
-    'You write a single short line for a creative writing app called Swell.',
-    'Voice: terse, image-led, contemporary. Strong verbs and concrete nouns.',
-    'Forbidden: motivational-poster tone, self-help clichés, "remember", "embrace", "journey", "warrior", "blessed", emojis, hashtags, quotation marks, attributions, explanations, preambles.',
-    'Output exactly one line under 22 words. No leading dash, number, or label. No trailing period required.',
+    'You write a single short line for a creative writing instrument called Swell.',
+    'Voice: terse, image-led, contemporary, exact. Strong verbs, concrete nouns, specific particulars over abstractions.',
+    'Pursue ingenuity: prefer the angle a careful writer would choose on the third try, not the first. Surprise without straining.',
+    'Forbidden: motivational-poster tone, self-help clichés, TED-talk cadence, "remember", "embrace", "journey", "warrior", "blessed", "we all", "is the new", second-person commands, rhetorical questions, emojis, hashtags, quotation marks, attributions, explanations, preambles, trailing moralizing.',
+    'Output exactly one line, under 22 words. No leading dash, number, or label. No trailing period required.',
   ].join(' ');
 }
 
 function userPrompt(type, seed) {
   const trimmed = (seed || '').trim().slice(0, MAX_SEED_LEN);
-  const seedClause = trimmed
-    ? `\nThe line should hold this fragment in mind, without quoting or naming it: ${trimmed}`
-    : '';
+  const hasSeed = trimmed.length > 0;
+  const seedClause = hasSeed
+    ? `\nHold this fragment in mind without quoting, naming, or paraphrasing it directly — let it sit underneath the line: ${trimmed}`
+    : '\nNo seed was provided. Invent a small, specific scene or object as the anchor — kitchen, weather, transit, body, tool. Do not address or assume anything about the reader.';
+
   switch (type) {
     case 'aphorism':
       return [
-        'Write one aphorism: a compressed observation that lands like a small bell.',
-        'It states something true and slightly unfamiliar. Image or specific detail beats abstraction.',
-        'Avoid wisdom-cookie phrasing. No "is the new", no "we all", no second-person commands.',
+        'Write one aphorism.',
+        'Contract: a compressed, portable truth. Carved, final, stand-alone. Reads as if it has always existed.',
+        'Shape: declarative. State the world, do not advise it. One concrete image or specific detail does the work; abstraction alone fails.',
+        'Test: if the line could appear on a coffee mug, rewrite it. If it sounds like a quote-card, rewrite it. If a stranger could not repeat it from memory after one read, sharpen it.',
+        'Forbidden here: "is the new ___", "the only ___ is ___", "true ___ is ___", lecturing, hedging, soft sentiment.',
         seedClause,
       ].join(' ');
     case 'paradox':
       return [
-        'Write one paradox: a single line that holds two facts which seem to undo each other but are both true.',
-        'Use a quiet "but/and yet/the more... the less" hinge or a turn mid-line.',
-        'Image-grounded if possible. No riddle phrasing, no "I am both X and Y" formula.',
+        'Write one paradox.',
+        'Contract: two things that are both true and pull against each other. Tension stays alive at the end of the line — no neat resolution, no answer, no wink.',
+        'Shape: a single sentence with a hinge ("and yet", "but", "the more... the less", "even as", "while"), or a clean turn mid-line. Concrete on both sides of the hinge.',
+        'Test: if either half can be deleted without loss, it is not yet a paradox. If the line resolves the contradiction, remove the resolution.',
+        'Forbidden here: riddle phrasing, "I am both X and Y", "everyone X but no one Y", clever oxymorons that collapse on inspection.',
         seedClause,
       ].join(' ');
     case 'contradiction':
       return [
-        'Write one contradiction: a single line where the second half cuts against the first.',
-        'It should feel honest, not clever. Concrete subject, then a turn that exposes the lie inside the want.',
-        'No "but they say" framing, no "everyone wants X but nobody Y" pattern.',
+        'Write one contradiction.',
+        'Contract: a mismatch between what someone believes / says / wants and what they actually do. Expose self-betrayal, avoidance, or a hidden incentive — with bite, never cruelty.',
+        'Shape: concrete subject and a small, observable behavior. The line should sting because it is recognisable, not because it accuses. Specificity over generality. The behavior is the punchline; do not explain it.',
+        'Test: if the line preaches, cut it. If the line could apply to "everyone", make the subject more specific. The reader should feel caught, not lectured.',
+        'Forbidden here: "but they say", "everyone wants X but nobody Y", finger-wagging, irony quotes, therapy vocabulary ("trauma", "boundaries", "authenticity").',
         seedClause,
       ].join(' ');
     default:
@@ -152,7 +161,7 @@ app.post('/api/generate', rateLimit, async (req, res) => {
     if (!line) {
       return res.status(502).json({ error: 'empty_response' });
     }
-    return res.json({ line, type });
+    return res.json({ line, type, seeded: seed.trim().length > 0 });
   } catch (err) {
     const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
     // Deliberately do not log seed text or full prompt — only the type and
