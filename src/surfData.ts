@@ -1,44 +1,109 @@
 // Live surf-data resonance.
 //
-// Pulls public marine conditions for a curated set of real surf breaks from
-// Open-Meteo (no API key, no scraping) and matches them to the user's inner
-// "read" vector derived from the forecast engine. The match is a metaphor —
-// the app states "your inner read currently most resembles live water at X",
-// never claims this is Surfline data or an authoritative surf report.
+// Pulls public marine + wind conditions for a broad global atlas of real surf
+// breaks from Open-Meteo (no API key, no scraping) and matches them against
+// the user's inner "read" vector. The chosen break is whichever real spot is
+// *currently* experiencing conditions most similar to the inner state — not
+// an archetype picked by label. The app frames this as "your inner read most
+// resembles live water at X" and never claims to be Surfline data.
 //
-// Open-Meteo Marine API docs: https://open-meteo.com/en/docs/marine-weather-api
-// Open-Meteo Wind/Weather API: https://open-meteo.com/en/docs
+// Open-Meteo Marine API:  https://open-meteo.com/en/docs/marine-weather-api
+// Open-Meteo Weather API: https://open-meteo.com/en/docs
 
 import type { Texture, Direction, ForecastSource, ForecastConditions, TidePhase } from './forecast';
 
-// ─── curated breaks ──────────────────────────────────────────────────────────
+// ─── break atlas ─────────────────────────────────────────────────────────────
 //
-// Real breaks with rough lat/lon. Region/character are flavour. The list
-// is intentionally short — fewer requests, lower API noise, more recognisable
-// to a non-surfer.
+// A global set of real surf spots covering the major condition flavours:
+// soft/longboard, pointbreak, beachbreak, slab/reef, big-wave, cold-water,
+// tropical, windy, clean long-period. Each break carries a small "working
+// window" — ideal swell direction(s), workable size band, minimum period,
+// archetype — so live conditions can be scored against the spot's actual
+// preference rather than a generic distance.
+//
+// Lat/lon are accurate-ish (within a kilometre or so). They only need to be
+// close enough that Open-Meteo returns ocean conditions for the cell.
+
+export type BreakArchetype =
+  | 'soft'        // small, gentle, longboard
+  | 'point'       // long wrapping point
+  | 'beachbreak'  // shifty, punchy, short period
+  | 'reef'        // shallow, sharp
+  | 'slab'        // thick water, low tide
+  | 'bigwave'     // open-ocean giant
+  | 'tropical'    // warm reef
+  | 'cold'        // cold-water heavy
+  | 'wind';       // windy / choppy expression
 
 export type Break = {
   name: string;
   region: string;
   lat: number;
   lon: number;
-  /** poetic / felt character used as fallback copy when match is loose. */
+  /** poetic / felt character, used as fallback copy when match is loose. */
   feel: string;
+  archetype: BreakArchetype;
+  /** ideal swell directions in 8-point compass (the swell *coming from*). */
+  idealDirs: Direction[];
+  /** workable size band in feet (swell height, not face). */
+  minFt: number;
+  maxFt: number;
+  /** minimum useful period in seconds. */
+  minPeriod: number;
+  /** rough heaviness 0..1 — used as a soft target for the power channel. */
+  heaviness: number;
 };
 
 export const BREAKS: Break[] = [
-  { name: 'Waikiki',           region: 'Oʻahu',          lat: 21.276,  lon: -157.828, feel: 'small, warm, easy to step into' },
-  { name: 'Pipeline',          region: 'Oʻahu',          lat: 21.665,  lon: -158.053, feel: 'heavy, square, no margin for hesitation' },
-  { name: 'Ala Moana Bowls',   region: 'Oʻahu',          lat: 21.290,  lon: -157.853, feel: 'a hollow left bowl, sharp and quick' },
-  { name: 'Makaha',            region: 'Oʻahu',          lat: 21.476,  lon: -158.221, feel: 'long, peaky walls with weight underneath' },
-  { name: 'Malibu First Point', region: 'California',    lat: 34.034,  lon: -118.679, feel: 'soft, forgiving, a long open shoulder' },
-  { name: 'Rincon',            region: 'California',     lat: 34.373,  lon: -119.479, feel: 'a long right that wraps and keeps wrapping' },
-  { name: 'Lower Trestles',    region: 'California',     lat: 33.382,  lon: -117.589, feel: 'punchy, playful, asking for one clean turn' },
-  { name: 'Mavericks',         region: 'California',     lat: 37.494,  lon: -122.501, feel: 'long lines, deep water, real consequence' },
-  { name: 'J-Bay',             region: 'South Africa',   lat: -34.046, lon:   24.910, feel: 'glass and speed, a line that keeps drawing' },
-  { name: 'Cloudbreak',        region: 'Fiji',           lat: -17.876, lon:  177.193, feel: 'open ocean swell finding its shape' },
-  { name: 'Teahupoʻo',         region: 'Tahiti',         lat: -17.847, lon: -149.267, feel: 'thick water, weight all at once' },
-  { name: 'Nazaré',            region: 'Portugal',       lat:  39.605, lon:   -9.078, feel: 'mountainous swell pulled up out of nothing' },
+  // — Hawaiʻi —
+  { name: 'Waikiki',          region: 'Oʻahu',         lat:  21.276, lon: -157.828, archetype: 'soft',       idealDirs: ['S','SW','SE'], minFt: 0.5, maxFt: 4,  minPeriod:  8, heaviness: 0.10, feel: 'small, warm, easy to step into' },
+  { name: 'Ala Moana Bowls',  region: 'Oʻahu',         lat:  21.290, lon: -157.853, archetype: 'reef',       idealDirs: ['S','SW'],      minFt: 2,   maxFt: 8,  minPeriod: 11, heaviness: 0.55, feel: 'a hollow left bowl, sharp and quick' },
+  { name: 'Makaha',           region: 'Oʻahu',         lat:  21.476, lon: -158.221, archetype: 'point',      idealDirs: ['NW','W','SW'], minFt: 3,   maxFt: 15, minPeriod: 10, heaviness: 0.55, feel: 'long, peaky walls with weight underneath' },
+  { name: 'Pipeline',         region: 'Oʻahu',         lat:  21.665, lon: -158.053, archetype: 'reef',       idealDirs: ['NW','N','W'],  minFt: 4,   maxFt: 18, minPeriod: 12, heaviness: 0.85, feel: 'heavy, square, no margin for hesitation' },
+  { name: 'Sunset Beach',     region: 'Oʻahu',         lat:  21.677, lon: -158.041, archetype: 'reef',       idealDirs: ['N','NW','NE'], minFt: 4,   maxFt: 20, minPeriod: 12, heaviness: 0.70, feel: 'wide, shifting peaks, west-bowl power' },
+
+  // — California —
+  { name: 'Doheny',           region: 'California',    lat:  33.461, lon: -117.687, archetype: 'soft',       idealDirs: ['S','SW'],      minFt: 0.5, maxFt: 3,  minPeriod:  8, heaviness: 0.10, feel: 'tiny rolling sets, more memory than wave' },
+  { name: 'Malibu First Point', region: 'California',  lat:  34.034, lon: -118.679, archetype: 'point',      idealDirs: ['S','SW','W'],  minFt: 1,   maxFt: 6,  minPeriod: 10, heaviness: 0.20, feel: 'soft, forgiving, a long open shoulder' },
+  { name: 'Rincon',           region: 'California',    lat:  34.373, lon: -119.479, archetype: 'point',      idealDirs: ['W','NW','SW'], minFt: 2,   maxFt: 10, minPeriod: 12, heaviness: 0.40, feel: 'a long right that wraps and keeps wrapping' },
+  { name: 'Lower Trestles',   region: 'California',    lat:  33.382, lon: -117.589, archetype: 'beachbreak', idealDirs: ['S','SW','W'],  minFt: 2,   maxFt: 8,  minPeriod:  9, heaviness: 0.30, feel: 'punchy, playful, asking for one clean turn' },
+  { name: 'Swami’s',     region: 'California',    lat:  33.034, lon: -117.293, archetype: 'reef',       idealDirs: ['W','NW','SW'], minFt: 2,   maxFt: 10, minPeriod: 11, heaviness: 0.35, feel: 'reef-point with a clean wrapping shoulder' },
+  { name: 'Ocean Beach SF',   region: 'California',    lat:  37.760, lon: -122.512, archetype: 'wind',       idealDirs: ['W','NW'],      minFt: 3,   maxFt: 15, minPeriod:  9, heaviness: 0.55, feel: 'cold, disorganised, pushes back' },
+  { name: 'Mavericks',        region: 'California',    lat:  37.494, lon: -122.501, archetype: 'bigwave',    idealDirs: ['W','NW'],      minFt: 8,   maxFt: 40, minPeriod: 14, heaviness: 0.95, feel: 'long lines, deep water, real consequence' },
+
+  // — Pacific Northwest, dropped in for cold-water variety —
+  { name: 'Pacific City',     region: 'Oregon',        lat:  45.211, lon: -123.972, archetype: 'cold',       idealDirs: ['W','NW','SW'], minFt: 2,   maxFt: 12, minPeriod: 10, heaviness: 0.45, feel: 'cold dorsal-grey peaks, slow open faces' },
+
+  // — Central & South America —
+  { name: 'Puerto Escondido', region: 'Mexico',        lat:  15.860, lon:  -97.067, archetype: 'beachbreak', idealDirs: ['S','SW'],      minFt: 4,   maxFt: 20, minPeriod: 12, heaviness: 0.85, feel: 'sand-bottomed slabs, square Pacific energy' },
+  { name: 'Pavones',          region: 'Costa Rica',    lat:   8.385, lon:  -83.139, archetype: 'point',      idealDirs: ['S','SW'],      minFt: 2,   maxFt: 12, minPeriod: 12, heaviness: 0.40, feel: 'one of the longest left points in the world' },
+  { name: 'Chicama',          region: 'Peru',          lat:  -7.692, lon:  -79.448, archetype: 'point',      idealDirs: ['SW','S','W'],  minFt: 2,   maxFt: 10, minPeriod: 12, heaviness: 0.35, feel: 'an absurdly long left, lap after lap' },
+
+  // — Indonesia & Pacific —
+  { name: 'Uluwatu',          region: 'Bali',          lat:  -8.815, lon:  115.087, archetype: 'tropical',   idealDirs: ['SW','S','W'],  minFt: 3,   maxFt: 15, minPeriod: 12, heaviness: 0.65, feel: 'reef-point speed and warm offshore wind' },
+  { name: 'Padang Padang',    region: 'Bali',          lat:  -8.811, lon:  115.103, archetype: 'reef',       idealDirs: ['SW','S'],      minFt: 4,   maxFt: 12, minPeriod: 12, heaviness: 0.75, feel: 'a hollow left throwing thick lips' },
+  { name: 'Desert Point',     region: 'Lombok',        lat:  -8.740, lon:  115.836, archetype: 'reef',       idealDirs: ['S','SW'],      minFt: 3,   maxFt: 12, minPeriod: 13, heaviness: 0.75, feel: 'a long, mechanical left tube' },
+  { name: 'Cloudbreak',       region: 'Fiji',          lat: -17.876, lon:  177.193, archetype: 'reef',       idealDirs: ['S','SW','SE'], minFt: 3,   maxFt: 20, minPeriod: 12, heaviness: 0.75, feel: 'open ocean swell finding its shape' },
+  { name: 'Teahupoʻo',   region: 'Tahiti',        lat: -17.847, lon: -149.267, archetype: 'slab',       idealDirs: ['SW','S','W'],  minFt: 4,   maxFt: 25, minPeriod: 13, heaviness: 0.95, feel: 'thick water, weight all at once' },
+
+  // — Australia & NZ —
+  { name: 'Snapper Rocks',    region: 'Queensland',    lat: -28.165, lon:  153.551, archetype: 'point',      idealDirs: ['E','SE','NE'], minFt: 2,   maxFt: 10, minPeriod: 10, heaviness: 0.40, feel: 'a sand-perfect point that runs forever' },
+  { name: 'Bells Beach',      region: 'Victoria',      lat: -38.367, lon:  144.281, archetype: 'point',      idealDirs: ['SW','S','W'],  minFt: 3,   maxFt: 15, minPeriod: 12, heaviness: 0.55, feel: 'a steady reef-point pulse you can hear coming' },
+  { name: 'Shipstern Bluff',  region: 'Tasmania',      lat: -43.245, lon:  147.762, archetype: 'slab',       idealDirs: ['S','SW','W'],  minFt: 5,   maxFt: 25, minPeriod: 13, heaviness: 0.95, feel: 'a cold step-laden slab under sandstone cliffs' },
+  { name: 'Raglan',           region: 'New Zealand',   lat: -37.812, lon:  174.798, archetype: 'point',      idealDirs: ['SW','W'],      minFt: 2,   maxFt: 10, minPeriod: 10, heaviness: 0.40, feel: 'long left points lighting up under green hills' },
+
+  // — Europe —
+  { name: 'Hossegor',         region: 'France',        lat:  43.667, lon:   -1.443, archetype: 'beachbreak', idealDirs: ['W','NW','SW'], minFt: 2,   maxFt: 12, minPeriod:  9, heaviness: 0.50, feel: 'short-period beachbreak, lots of motion at once' },
+  { name: 'Mundaka',          region: 'Spain',         lat:  43.408, lon:   -2.700, archetype: 'point',      idealDirs: ['NW','N','W'],  minFt: 3,   maxFt: 12, minPeriod: 10, heaviness: 0.55, feel: 'a sand-river left that lines up just so' },
+  { name: 'Nazaré',     region: 'Portugal',       lat:  39.605, lon:   -9.078, archetype: 'bigwave',    idealDirs: ['W','NW'],      minFt: 6,   maxFt: 60, minPeriod: 13, heaviness: 0.95, feel: 'mountainous swell pulled up out of nothing' },
+  { name: 'Thurso East',      region: 'Scotland',      lat:  58.601, lon:   -3.518, archetype: 'cold',       idealDirs: ['N','NW'],      minFt: 3,   maxFt: 15, minPeriod: 11, heaviness: 0.65, feel: 'cold reef right under the castle wall' },
+  { name: 'Mullaghmore',      region: 'Ireland',       lat:  54.467, lon:   -8.456, archetype: 'slab',       idealDirs: ['W','NW','SW'], minFt: 6,   maxFt: 30, minPeriod: 13, heaviness: 0.92, feel: 'a heavy Atlantic slab that only shows in storms' },
+
+  // — Africa —
+  { name: 'J-Bay',            region: 'South Africa',  lat: -34.046, lon:   24.910, archetype: 'point',      idealDirs: ['SW','S','W'],  minFt: 3,   maxFt: 15, minPeriod: 12, heaviness: 0.55, feel: 'glass and speed, a line that keeps drawing' },
+  { name: 'Skeleton Bay',     region: 'Namibia',       lat: -27.117, lon:   14.495, archetype: 'point',      idealDirs: ['SW','S'],      minFt: 3,   maxFt: 12, minPeriod: 12, heaviness: 0.65, feel: 'a sand-bottom left that runs almost without end' },
+  { name: 'Anchor Point',     region: 'Morocco',       lat:  30.544, lon:   -9.722, archetype: 'point',      idealDirs: ['NW','W','N'],  minFt: 3,   maxFt: 12, minPeriod: 11, heaviness: 0.50, feel: 'a long right point unspooling under desert cliffs' },
+  { name: 'Killer Point',     region: 'Morocco',       lat:  30.554, lon:   -9.717, archetype: 'point',      idealDirs: ['NW','W','N'],  minFt: 4,   maxFt: 18, minPeriod: 12, heaviness: 0.65, feel: 'big-wave Atlantic right firing into rocks' },
 ];
 
 // ─── normalised live conditions ──────────────────────────────────────────────
@@ -74,7 +139,6 @@ function clamp(n: number, lo: number, hi: number): number {
 function degreesToCardinal(deg: number | null): Direction | null {
   if (deg == null || Number.isNaN(deg)) return null;
   const d = ((deg % 360) + 360) % 360;
-  // 8-point compass, 45° each, centred on the cardinal.
   const idx = Math.round(d / 45) % 8;
   const ring: Direction[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   return ring[idx];
@@ -88,19 +152,16 @@ function textureFromWind(windMph: number): Texture {
 }
 
 function powerOf(heightFt: number, periodSec: number): number {
-  // Surfer's rough rule: energy ∝ H² · T. Normalise to roughly 0..1 across
-  // the curated set by dividing by a sensible cap.
   const e = heightFt * heightFt * periodSec;
   return clamp(e / 600, 0, 1);
 }
 
 // ─── fetching (Open-Meteo) ───────────────────────────────────────────────────
 //
-// One marine request and one weather request per break, batched concurrently
-// through Promise.allSettled. Open-Meteo accepts comma-separated lat/lon for
-// multi-location queries on the marine endpoint, which keeps this to two
-// HTTP calls total. Falls back to per-break if the multi-location format
-// changes shape on the server.
+// Open-Meteo accepts comma-separated lat/lon for multi-location queries on
+// both the marine and weather endpoints. With ~33 breaks the URL is well
+// under typical limits. We do two HTTP calls total per refresh, cache the
+// result for 30 minutes, and de-duplicate concurrent in-flight requests.
 
 const MARINE_BASE = 'https://marine-api.open-meteo.com/v1/marine';
 const WEATHER_BASE = 'https://api.open-meteo.com/v1/forecast';
@@ -113,7 +174,6 @@ type MarinePoint = {
     swell_wave_direction?: number;
     wave_period?: number;
   };
-  // older / non-current variants
   hourly?: {
     wave_height?: number[];
     swell_wave_height?: number[];
@@ -131,8 +191,6 @@ type WeatherPoint = {
   };
 };
 
-// In-memory module-level cache. Throttle to ~30 minutes; surf-break conditions
-// don't shift on the timescales of typing.
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 let cache: { at: number; data: LiveConditions[] } | null = null;
@@ -143,8 +201,6 @@ function pickFirst<T>(arr: T[] | undefined): T | undefined {
 }
 
 function arrayifyResults<T>(json: any): T[] {
-  // Open-Meteo returns an object for a single location and an array for
-  // multi-location requests. Normalise to an array.
   if (Array.isArray(json)) return json as T[];
   if (json && typeof json === 'object') return [json as T];
   return [];
@@ -183,8 +239,6 @@ async function fetchAll(): Promise<LiveConditions[]> {
     const m = marinePoints[i];
     const w = weatherPoints[i];
 
-    // Pull current values, fall back to first hourly entry if the API
-    // returned hourly only (it does for some sparse offshore points).
     const swellH_m =
       m?.current?.swell_wave_height ??
       m?.current?.wave_height ??
@@ -204,10 +258,7 @@ async function fetchAll(): Promise<LiveConditions[]> {
       w?.current?.wind_speed_10m ??
       pickFirst(w?.hourly?.wind_speed_10m);
 
-    if (swellH_m == null || periodS == null) {
-      // Skip the break rather than fabricate numbers.
-      continue;
-    }
+    if (swellH_m == null || periodS == null) continue;
 
     const waveHeightFt = swellH_m * M_TO_FT;
     const periodSec = periodS;
@@ -246,17 +297,12 @@ export async function getLiveConditions(): Promise<LiveConditions[]> {
   return inflight;
 }
 
-// Reset for tests / forced refresh.
 export function clearLiveCache(): void {
   cache = null;
   inflight = null;
 }
 
 // ─── inner read vector ───────────────────────────────────────────────────────
-//
-// The user's interior conditions, expressed in the same units the live data
-// uses so we can compare like-for-like. Built from the forecast engine's
-// already-derived numbers, plus a few category nudges.
 
 export type InnerVector = {
   /** desired wave height in ft (centre of the predicted band) */
@@ -271,11 +317,11 @@ export type InnerVector = {
   direction: Direction | null;
   /** archetype category — biases break selection */
   archetype:
-    | 'heavy'        // contradiction / body pressure / large
-    | 'long'         // returning memory / old conversation / long-period
-    | 'punchy'       // fresh swell, mid-size, building
-    | 'soft'         // glass, small, gentle
-    | 'open';        // open water / quiet
+    | 'heavy'
+    | 'long'
+    | 'punchy'
+    | 'soft'
+    | 'open';
 };
 
 export function deriveInnerVector(args: {
@@ -303,14 +349,7 @@ export function deriveInnerVector(args: {
     archetype = 'soft';
   }
 
-  return {
-    heightFt,
-    periodSec: period,
-    texture,
-    power,
-    direction,
-    archetype,
-  };
+  return { heightFt, periodSec: period, texture, power, direction, archetype };
 }
 
 // ─── matching ────────────────────────────────────────────────────────────────
@@ -327,45 +366,43 @@ function textureDistance(a: Texture, b: Texture): number {
 }
 
 // 8-point cardinal distance, 0..1 (max half-circle).
-function cardinalDistance(a: Direction | null, b: Direction | null): number {
-  if (!a || !b) return 0.3; // unknown = mild penalty
+function cardinalDistance(a: Direction, b: Direction): number {
   const ring: Direction[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   const ai = ring.indexOf(a);
   const bi = ring.indexOf(b);
-  if (ai < 0 || bi < 0) return 0.3;
+  if (ai < 0 || bi < 0) return 0.5;
   const raw = Math.abs(ai - bi);
-  const dist = Math.min(raw, 8 - raw); // 0..4
+  const dist = Math.min(raw, 8 - raw);
   return dist / 4;
 }
 
-function archetypeBias(arch: InnerVector['archetype'], live: LiveConditions): number {
-  // Lower = better fit. Encodes the "what kind of water this read wants".
-  const h = live.waveHeightFt;
-  const p = live.periodSec;
-  switch (arch) {
-    case 'heavy':
-      // Reward big & powerful, penalise small.
-      if (h >= 6) return -0.15;
-      if (h >= 4 && p >= 12) return -0.07;
-      if (h <= 2.5) return 0.12;
-      return 0;
-    case 'long':
-      if (p >= 13) return -0.12;
-      if (p >= 11) return -0.06;
-      if (p <= 8) return 0.10;
-      return 0;
-    case 'punchy':
-      if (h >= 3 && h <= 5 && p >= 9 && p <= 12) return -0.10;
-      if (h >= 7) return 0.08;
-      return 0;
-    case 'soft':
-      if (h <= 3 && live.texture !== 'choppy') return -0.10;
-      if (h >= 5 || live.texture === 'choppy') return 0.12;
-      return 0;
-    case 'open':
-      if (h >= 1 && h <= 4) return -0.04;
-      return 0.02;
+// How well the live swell direction fits this break's working window.
+// 0 = within ideal directions, scales up with distance from the closest one.
+function directionFit(live: Direction | null, ideal: Direction[]): number | null {
+  if (!live || ideal.length === 0) return null;
+  let best = Infinity;
+  for (const d of ideal) {
+    const dd = cardinalDistance(live, d);
+    if (dd < best) best = dd;
   }
+  return best;
+}
+
+// How well the live size sits inside the break's workable band.
+// 0 inside the band, scales up as it falls outside (in either direction).
+function sizeFit(heightFt: number, br: Break): number {
+  if (heightFt >= br.minFt && heightFt <= br.maxFt) return 0;
+  if (heightFt < br.minFt) {
+    return clamp((br.minFt - heightFt) / 6, 0, 1);
+  }
+  return clamp((heightFt - br.maxFt) / 10, 0, 1);
+}
+
+// Period below the spot's minimum is a real penalty (point/slab need lines);
+// above it is fine.
+function periodFit(periodSec: number, br: Break): number {
+  if (periodSec >= br.minPeriod) return 0;
+  return clamp((br.minPeriod - periodSec) / 8, 0, 1);
 }
 
 export type LiveMatch = {
@@ -378,24 +415,64 @@ export type LiveMatch = {
   summary: string;
 };
 
-// Score: weighted distance, height/power dominate, then period & texture,
-// direction last. Lower is better.
-function score(inner: InnerVector, live: LiveConditions): number {
+// Return both the inner-vs-live distance and the spot-window fit. Lower is
+// better for both; we fold them into a single score.
+function scoreParts(inner: InnerVector, live: LiveConditions): {
+  total: number;
+  windowFit: number;
+} {
+  // — inner-vs-live channels —
   const hDiff = Math.abs(inner.heightFt - live.waveHeightFt);
   const pDiff = Math.abs(inner.periodSec - live.periodSec);
-  const powDiff = Math.abs(inner.power - live.power);
   const tDiff = textureDistance(inner.texture, live.texture);
-  const dDiff = cardinalDistance(inner.direction, live.directionCardinal);
+  const powDiff = Math.abs(inner.power - live.power);
 
-  const w =
-    0.30 * (hDiff / 6) +     // 0..1ish
-    0.25 * (pDiff / 8) +
-    0.18 * powDiff +
-    0.17 * tDiff +
-    0.05 * dDiff +
-    0.05 * 0; // reserved
+  // Direction term: only counted if both sides are known; otherwise the
+  // weight is renormalised across the remaining channels so we don't penalise
+  // breaks just because Open-Meteo didn't return a direction.
+  const dRaw =
+    inner.direction && live.directionCardinal
+      ? cardinalDistance(inner.direction, live.directionCardinal)
+      : null;
 
-  return w + archetypeBias(inner.archetype, live);
+  // — spot-window fit (does this swell actually work at this break?) —
+  const sizeFitVal = sizeFit(live.waveHeightFt, live.break);
+  const periodFitVal = periodFit(live.periodSec, live.break);
+  const dirFitVal = directionFit(live.directionCardinal, live.break.idealDirs); // null if unknown
+  const heavinessGap = Math.abs(inner.power - live.break.heaviness);
+
+  const windowFit =
+    0.45 * sizeFitVal +
+    0.20 * periodFitVal +
+    0.20 * (dirFitVal ?? 0) +
+    0.15 * heavinessGap;
+
+  // Inner-vs-live distance with renormalisation when direction is unknown.
+  const innerWeights = {
+    height: 0.30,
+    period: 0.22,
+    texture: 0.18,
+    power:  0.15,
+    dir:    0.15,
+  };
+  const haveDir = dRaw != null;
+  const dirContribution = haveDir ? innerWeights.dir * (dRaw as number) : 0;
+  const renormScale = haveDir ? 1 : 1 / (1 - innerWeights.dir);
+
+  const innerDist =
+    (innerWeights.height * (hDiff / 6) +
+      innerWeights.period * (pDiff / 8) +
+      innerWeights.texture * tDiff +
+      innerWeights.power * powDiff +
+      dirContribution) *
+    renormScale;
+
+  // Combine: inner-vs-live distance dominates (the user wants the live spot
+  // most like their inner state), with window fit as a meaningful tie-breaker
+  // that distinguishes Pipeline from Teahupoʻo from Mavericks at similar live
+  // numbers.
+  const total = 0.65 * innerDist + 0.35 * windowFit;
+  return { total, windowFit };
 }
 
 function summaryFor(c: LiveConditions): string {
@@ -421,22 +498,41 @@ export function matchInnerToLive(
   live: LiveConditions[],
 ): LiveMatch | null {
   if (live.length === 0) return null;
-  let best: LiveConditions = live[0];
-  let bestScore = score(inner, best);
-  for (let i = 1; i < live.length; i++) {
-    const s = score(inner, live[i]);
-    if (s < bestScore) {
-      bestScore = s;
-      best = live[i];
-    }
-  }
+
+  // Score every break, then pick the lowest. Sort with window-fit as the
+  // tie-breaker so two near-equal totals resolve to whichever spot the swell
+  // actually works at — and so order of the input array doesn't bias the pick.
+  const scored = live.map((c) => ({ c, ...scoreParts(inner, c) }));
+  scored.sort((a, b) => {
+    if (Math.abs(a.total - b.total) > 1e-6) return a.total - b.total;
+    return a.windowFit - b.windowFit;
+  });
+  const best = scored[0];
+
   // Map score to a 0..100 confidence. Lower score = higher confidence.
-  // Empirically, scores in [0, 0.6]; cap and invert.
-  const conf = clamp(Math.round((1 - clamp(bestScore, 0, 0.8) / 0.8) * 100), 25, 95);
+  // Empirical range across the atlas: ~0..0.7.
+  const conf = clamp(
+    Math.round((1 - clamp(best.total, 0, 0.8) / 0.8) * 100),
+    25,
+    95,
+  );
   return {
-    conditions: best,
+    conditions: best.c,
     confidence: conf,
-    reason: reasonFor(inner, best),
-    summary: summaryFor(best),
+    reason: reasonFor(inner, best.c),
+    summary: summaryFor(best.c),
   };
+}
+
+// ─── tiny dev smoke check (not wired into a test runner) ─────────────────────
+//
+// Lets a contributor sanity-check matching without booting the app. Pass a
+// constructed inner vector and a hand-rolled set of live conditions; the
+// function returns the picked break name. Pure, no I/O.
+
+export function smokeMatchName(
+  inner: InnerVector,
+  live: LiveConditions[],
+): string | null {
+  return matchInnerToLive(inner, live)?.conditions.break.name ?? null;
 }

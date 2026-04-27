@@ -340,7 +340,7 @@ function ResemblanceLine({
     return (
       <View style={waveStyles.resemblanceLine} testID="forecast-resemblance">
         <Text style={waveStyles.resemblance} numberOfLines={2}>
-          live match ·{' '}
+          closest live match ·{' '}
           <Text style={waveStyles.resemblanceName}>{c.break.name}</Text>
           <Text style={waveStyles.resemblanceRegion}> · {c.break.region}</Text>
         </Text>
