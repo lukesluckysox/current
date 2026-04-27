@@ -13,12 +13,14 @@ import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 import { exportAllData, clearAllData } from '../db/database';
 import { Header } from '../components';
 import { RootStackParamList } from '../../App';
+import { useAuth } from '../AuthContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 };
 
 export default function SettingsScreen({ navigation }: Props) {
+  const auth = useAuth();
   async function handleExport() {
     const data = await exportAllData();
     try {
@@ -71,6 +73,37 @@ export default function SettingsScreen({ navigation }: Props) {
             <Text style={[styles.actionArrow, styles.destructive]}>↻</Text>
           </TouchableOpacity>
         </View>
+
+        {auth.status === 'authenticated' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>account</Text>
+            <Text style={styles.sectionNote}>
+              signed in as {auth.user.username}.
+            </Text>
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => {
+                Alert.alert('Sign out?', 'You will need to sign in again to use Current.', [
+                  { text: 'Stay', style: 'cancel' },
+                  {
+                    text: 'Sign out',
+                    style: 'destructive',
+                    onPress: () => {
+                      auth.signOut();
+                    },
+                  },
+                ]);
+              }}
+              activeOpacity={0.75}
+            >
+              <View>
+                <Text style={styles.actionTitle}>Sign out</Text>
+                <Text style={styles.actionSubtitle}>your saved lines stay on this device</Text>
+              </View>
+              <Text style={styles.actionArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>about current</Text>

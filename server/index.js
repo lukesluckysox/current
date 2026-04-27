@@ -15,6 +15,7 @@
 const path = require('path');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
+const { initDb, isDbConfigured, authMiddleware, requireAuth, mountAuthRoutes } = require('./auth');
 
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = process.env.LLM_MODEL || 'claude-haiku-4-5-20251001';
@@ -32,6 +33,8 @@ const VALID_EDIT_OPS = new Set(['clearer', 'sharper', 'stranger']);
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '8kb' }));
+app.use(authMiddleware);
+mountAuthRoutes(app);
 
 // Tiny in-memory rate limiter, keyed by client IP. Sliding window of 60s.
 // Best-effort — multi-instance Railway deploys won't share state, but it slows
@@ -261,10 +264,18 @@ async function complete(messages, system) {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, llm: Boolean(client), model: client ? MODEL : null });
+  res.json({ ok: true, llm: Boolean(client), model: client ? MODEL : null, auth: isDbConfigured() });
 });
 
-app.post('/api/generate', rateLimit, async (req, res) => {
+// When DB-backed auth is configured, LLM endpoints require a session.
+// When DATABASE_URL is not set (local dev without Postgres), we leave them
+// open so the app still works against a bare server.
+function maybeRequireAuth(req, res, next) {
+  if (!isDbConfigured()) return next();
+  return requireAuth(req, res, next);
+}
+
+app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
   if (!client) return res.status(503).json({ error: 'llm_unavailable' });
   const body = req.body || {};
   const type = String(body.type || '').toLowerCase();
@@ -302,7 +313,7 @@ app.post('/api/generate', rateLimit, async (req, res) => {
   }
 });
 
-app.post('/api/edit', rateLimit, async (req, res) => {
+app.post('/api/edit', maybeRequireAuth, rateLimit, async (req, res) => {
   if (!client) return res.status(503).json({ error: 'llm_unavailable' });
   const body = req.body || {};
   const op = String(body.op || '').toLowerCase();
@@ -374,7 +385,7 @@ function ruleBasedBreakReader(text) {
   return null;
 }
 
-app.post('/api/why-break', rateLimit, async (req, res) => {
+app.post('/api/why-break', maybeRequireAuth, rateLimit, async (req, res) => {
   const body = req.body || {};
   const text = typeof body.text === 'string' ? body.text : '';
   if (!text.trim()) return res.status(400).json({ error: 'empty_text' });
@@ -398,5 +409,12 @@ app.get('*', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Current server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL})`);
+  console.log(`Current server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL}, auth=${isDbConfigured()})`);
+  if (isDbConfigured()) {
+    initDb().then((ok) => {
+      console.log(`[auth] db init ${ok ? 'ok' : 'failed'}`);
+    });
+  } else {
+    console.warn('[auth] DATABASE_URL not set — auth disabled, LLM endpoints open.');
+  }
 });

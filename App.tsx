@@ -12,6 +12,8 @@ import {
 } from '@expo-google-fonts/cormorant-garamond';
 import { Colors, Fonts } from './src/theme';
 import { initDatabase } from './src/db/database';
+import { AuthProvider, useAuth } from './src/AuthContext';
+import LoginScreen from './src/screens/LoginScreen';
 
 import DriftScreen from './src/screens/DriftScreen';
 import VersoScreen from './src/screens/VersoScreen';
@@ -52,6 +54,51 @@ const NAV_THEME = {
   },
 };
 
+function AppNavigator() {
+  return (
+    <NavigationContainer theme={NAV_THEME}>
+      <StatusBar barStyle="light-content" />
+      <Stack.Navigator
+        initialRouteName="Drift"
+        screenOptions={{
+          headerShown: false,
+          animation: 'fade',
+          contentStyle: { backgroundColor: Colors.deepNavy },
+        }}
+      >
+        <Stack.Screen name="Drift" component={DriftScreen} />
+        <Stack.Screen name="Verso" component={VersoScreen} />
+        <Stack.Screen name="Lines" component={LinesScreen} />
+        <Stack.Screen name="LineDetail" component={LineDetailScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+function AuthGate() {
+  const auth = useAuth();
+  if (auth.status === 'loading') {
+    return (
+      <View style={styles.splash}>
+        <StatusBar barStyle="light-content" />
+        <Text style={styles.splashName}>Current</Text>
+      </View>
+    );
+  }
+  if (auth.status === 'unauthenticated') {
+    return (
+      <LoginScreen
+        mode={auth.canRegister ? 'register' : 'login'}
+        canRegister={auth.canRegister}
+        onAuthed={(user) => auth.signIn(user)}
+      />
+    );
+  }
+  // 'authenticated' or 'disabled' — render the app.
+  return <AppNavigator />;
+}
+
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -84,23 +131,9 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer theme={NAV_THEME}>
-      <StatusBar barStyle="light-content" />
-      <Stack.Navigator
-        initialRouteName="Drift"
-        screenOptions={{
-          headerShown: false,
-          animation: 'fade',
-          contentStyle: { backgroundColor: Colors.deepNavy },
-        }}
-      >
-        <Stack.Screen name="Drift" component={DriftScreen} />
-        <Stack.Screen name="Verso" component={VersoScreen} />
-        <Stack.Screen name="Lines" component={LinesScreen} />
-        <Stack.Screen name="LineDetail" component={LineDetailScreen} />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 
