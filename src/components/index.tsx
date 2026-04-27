@@ -157,96 +157,26 @@ export function Divider() {
 
 // ─── WaveForecast ────────────────────────────────────────────────────────────
 //
-// Surfline-style "inner forecast" card for Drift/home. Deterministic and
-// local — never claims to be real ocean data. The hour-of-day drives a
-// synthetic semidiurnal tide; the day-of-year nudges swell height; recent
-// tide tags shift the conditions label. The result is a poetic
-// writing-conditions readout that borrows surf-forecast language.
+// Surfline-style "inner forecast" card for Drift. Reads the actual app signal
+// (saved lines, fragment text, active tags) via the forecast engine and
+// renders the result with a "reading" and a recommended writing action.
+
+import type { Forecast } from '../forecast';
 
 type WaveForecastProps = {
-  recentTide?: string | null;
+  /** Pre-computed forecast from the engine. */
+  forecast: Forecast;
   savedToday?: number;
+  /** Tap on the recommended-action button. */
+  onAction?: () => void;
+  /** Tap on the resurface affordance, if a candidate exists. */
+  onResurface?: () => void;
   testID?: string;
 };
 
-const CONDITIONS_PHRASES: Record<string, string[]> = {
-  clean:    ['lines are arriving clean', 'the page is glassy', 'every sentence breaks true'],
-  fair:     ['workable, with texture', 'small wind on the surface', 'lines come in sets'],
-  building: ['something is gathering', 'the swell is building', 'feel it under the words'],
-  fading:   ['the set is letting go', 'lines stretch and loosen', 'the water is releasing'],
-  glass:    ['glass — the rare hour', 'no wind, only listening', 'the line writes itself'],
-};
-
-const DIRECTIONS = ['NW', 'W', 'SW', 'S', 'SE', 'E', 'NE', 'N'] as const;
-const WIND_LABELS = ['offshore', 'light onshore', 'cross-shore', 'glassy'] as const;
-
-function computeForecast(now: Date, recentTide?: string | null) {
-  const hours = now.getHours() + now.getMinutes() / 60;
-  // Semidiurnal tide phase (12.42h).
-  const phase = (hours % 12.42) / 12.42;
-  const tideLevel = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5; // 0..1
-
-  let tidePhase: 'flood' | 'ebb' | 'high' | 'low';
-  if (tideLevel > 0.82) tidePhase = 'high';
-  else if (tideLevel < 0.18) tidePhase = 'low';
-  else if (phase < 0.25 || phase >= 0.75) tidePhase = 'flood';
-  else tidePhase = 'ebb';
-
-  // Day-of-year drives a slow, poetic swing in swell numbers so it doesn't
-  // feel locked to wall-clock hours.
-  const start = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86400000);
-  const swellHeight = 1.5 + Math.abs(Math.sin((dayOfYear / 18) + hours / 30)) * 4.5; // 1.5..6.0 ft
-  const period = 8 + Math.round(((dayOfYear * 7 + now.getHours() * 3) % 11)); // 8..18 s
-  const direction = DIRECTIONS[(dayOfYear + now.getHours()) % DIRECTIONS.length];
-  const wind = WIND_LABELS[(now.getHours() + dayOfYear) % WIND_LABELS.length];
-  // Confidence drifts gently with the hour — never absolute, never zero.
-  const confidence = 50 + Math.round(Math.cos(hours / 4) * 20 + Math.sin(dayOfYear / 9) * 12);
-  const confidenceClamped = Math.max(25, Math.min(95, confidence));
-
-  let conditions: keyof typeof CONDITIONS_PHRASES;
-  if (wind === 'glassy' && tideLevel > 0.5) conditions = 'glass';
-  else if (wind === 'offshore') conditions = 'clean';
-  else if (tidePhase === 'flood') conditions = 'building';
-  else if (tidePhase === 'ebb') conditions = 'fading';
-  else conditions = 'fair';
-
-  if (recentTide && /dead calm|glass water|golden hour/.test(recentTide)) {
-    conditions = 'glass';
-  }
-  if (recentTide && /storm front|building chop|heavy current/.test(recentTide)) {
-    conditions = 'building';
-  }
-
-  const bank = CONDITIONS_PHRASES[conditions];
-  const phrase = bank[now.getHours() % bank.length];
-
-  // 7-point mini wave bar series — present moment in the middle.
-  const series = Array.from({ length: 7 }, (_, i) => {
-    const t = hours + (i - 3) * 1.5;
-    const p = (t % 12.42) / 12.42;
-    const lvl = Math.sin(p * Math.PI * 2) * 0.5 + 0.5;
-    return Math.max(0.18, Math.min(1, lvl * 0.6 + (swellHeight / 8) * 0.5));
-  });
-
-  return {
-    swellHeight,
-    period,
-    direction,
-    wind,
-    tideLevel,
-    tidePhase,
-    confidence: confidenceClamped,
-    conditions,
-    phrase,
-    series,
-  };
-}
-
-export function WaveForecast({ recentTide, savedToday, testID }: WaveForecastProps) {
-  const f = computeForecast(new Date(), recentTide ?? null);
+export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, testID }: WaveForecastProps) {
   const heightLow = f.swellHeight.toFixed(1);
-  const heightHigh = (f.swellHeight + 1.2).toFixed(1);
+  const heightHigh = f.swellHeightHigh.toFixed(1);
 
   return (
     <View style={waveStyles.container} testID={testID ?? 'wave-forecast'}>
@@ -260,12 +190,12 @@ export function WaveForecast({ recentTide, savedToday, testID }: WaveForecastPro
           <Text style={waveStyles.heightValue} accessibilityLabel={`line swell ${heightLow} to ${heightHigh} feet`}>
             {heightLow}<Text style={waveStyles.heightDash}>–</Text>{heightHigh}
           </Text>
-          <Text style={waveStyles.heightUnit}>ft · line swell</Text>
+          <Text style={waveStyles.heightUnit}>ft · {f.texture}</Text>
         </View>
         <View style={waveStyles.miniChartWrap}>
           <View style={waveStyles.miniChart} testID="forecast-bars">
             {f.series.map((v, i) => {
-              const isNow = i === 3;
+              const isNow = i === f.series.length - 1;
               return (
                 <View key={i} style={waveStyles.miniBarSlot}>
                   <View
@@ -280,9 +210,8 @@ export function WaveForecast({ recentTide, savedToday, testID }: WaveForecastPro
             })}
           </View>
           <View style={waveStyles.miniAxis}>
-            <Text style={waveStyles.miniAxisText}>−4h</Text>
+            <Text style={waveStyles.miniAxisText}>−24h</Text>
             <Text style={[waveStyles.miniAxisText, waveStyles.miniAxisNow]}>now</Text>
-            <Text style={waveStyles.miniAxisText}>+4h</Text>
           </View>
         </View>
       </View>
@@ -291,7 +220,7 @@ export function WaveForecast({ recentTide, savedToday, testID }: WaveForecastPro
         <ForecastChip label={`${f.period}s`} sub="period" />
         <ForecastChip label={f.direction} sub="direction" />
         <ForecastChip label={f.tidePhase} sub="tide" />
-        <ForecastChip label={f.wind} sub="wind" />
+        <ForecastChip label={f.source} sub="source" />
       </View>
 
       <View style={waveStyles.confidenceRow}>
@@ -303,11 +232,45 @@ export function WaveForecast({ recentTide, savedToday, testID }: WaveForecastPro
       </View>
 
       <Text style={waveStyles.phrase}>{f.phrase}</Text>
+      <Text style={waveStyles.reading} testID="forecast-reading">{f.reading}</Text>
+
+      <View style={waveStyles.actionRow}>
+        <Text style={waveStyles.actionHint}>{f.action.hint}</Text>
+        {onAction && (
+          <TouchableOpacity
+            onPress={onAction}
+            style={waveStyles.actionButton}
+            activeOpacity={0.8}
+            testID="forecast-action"
+            accessibilityLabel={f.action.label}
+          >
+            <Text style={waveStyles.actionButtonText}>{f.action.label}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {f.resurface && onResurface && f.action.kind !== 'resurface' && (
+        <TouchableOpacity
+          onPress={onResurface}
+          style={waveStyles.resurfaceLink}
+          activeOpacity={0.7}
+          testID="forecast-resurface"
+        >
+          <Text style={waveStyles.resurfaceLinkText}>
+            a line below the surface — “{truncate(f.resurface.content, 48)}”
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {typeof savedToday === 'number' && savedToday > 0 && (
         <Text style={waveStyles.savedToday}>{savedToday} caught today</Text>
       )}
     </View>
   );
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1).trimEnd() + '…';
 }
 
 function ForecastChip({ label, sub }: { label: string; sub: string }) {
@@ -319,8 +282,121 @@ function ForecastChip({ label, sub }: { label: string; sub: string }) {
   );
 }
 
+// ─── CurrentReadingCard ──────────────────────────────────────────────────────
+//
+// Shown at the top of Depth Stack when a tag current is followed. Compact,
+// poetic — borrows surf-forecast cadence to describe the slice without
+// turning into a KPI dashboard.
+
+import type { CurrentReading } from '../forecast';
+
+type CurrentReadingCardProps = {
+  reading: CurrentReading;
+  onAction?: () => void;
+  testID?: string;
+};
+
+export function CurrentReadingCard({ reading, onAction, testID }: CurrentReadingCardProps) {
+  return (
+    <View style={currentStyles.container} testID={testID ?? 'current-reading'}>
+      <Text style={currentStyles.label}>current reading</Text>
+      <Text style={currentStyles.title}>{reading.title}</Text>
+      <Text style={currentStyles.description}>{reading.description}</Text>
+      {reading.coTag && (
+        <Text style={currentStyles.cotag}>often runs with {reading.coTag.split(':').slice(1).join(':')}</Text>
+      )}
+      <View style={currentStyles.actionRow}>
+        <Text style={currentStyles.hint}>{reading.action.hint}</Text>
+        {onAction && (
+          <TouchableOpacity
+            onPress={onAction}
+            style={currentStyles.button}
+            activeOpacity={0.8}
+            testID="current-action"
+            accessibilityLabel={reading.action.label}
+          >
+            <Text style={currentStyles.buttonText}>{reading.action.label}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const currentStyles = StyleSheet.create({
+  container: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#0E1B2D',
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.amber,
+  },
+  label: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
+  title: {
+    color: Colors.sandLight,
+    fontFamily: Fonts.serif,
+    fontSize: FontSizes.lg,
+    marginBottom: 2,
+  },
+  description: {
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  cotag: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    marginTop: 2,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  hint: {
+    flex: 1,
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+  },
+  button: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.amber,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: Colors.amber,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+});
+
 // Backward-compatible alias for any older imports.
-export const TidalReading = WaveForecast;
+// (kept intentionally — older callers may reference TidalReading)
+export const TidalReading = WaveForecast as unknown as React.FC<any>;
 
 const waveStyles = StyleSheet.create({
   container: {
@@ -486,6 +562,55 @@ const waveStyles = StyleSheet.create({
     fontSize: FontSizes.md,
     textAlign: 'center',
   },
+  reading: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+    lineHeight: 20,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  actionHint: {
+    flex: 1,
+    color: Colors.mutedLight,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+  },
+  actionButton: {
+    backgroundColor: Colors.amber,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.xl,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  actionButtonText: {
+    color: Colors.deepNavy,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+  resurfaceLink: {
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  resurfaceLinkText: {
+    color: Colors.sand,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
   savedToday: {
     color: Colors.muted,
     fontFamily: Fonts.sans,
@@ -517,6 +642,8 @@ type TidalChartProps = {
   markers?: TidalChartMarker[];
   /** Total saved-line count, surfaced as a quiet sublabel. */
   totalCount?: number;
+  /** Override the flood/ebb label; if set, derived from the saved-line rhythm. */
+  phaseHint?: 'high' | 'low' | 'flood' | 'ebb';
   testID?: string;
 };
 
@@ -556,7 +683,7 @@ function fmtTime(decimalHours: number): string {
   return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
-export function TidalChart({ markers, totalCount, testID }: TidalChartProps) {
+export function TidalChart({ markers, totalCount, phaseHint, testID }: TidalChartProps) {
   const now = new Date();
   const curve = buildTideCurve(now);
   const { points, highs, lows, nowIdx } = curve;
@@ -574,10 +701,11 @@ export function TidalChart({ markers, totalCount, testID }: TidalChartProps) {
     timeLabel: fmtTime(points[i].t),
   }));
 
-  // Determine flood/ebb at "now" for the heading.
+  // Determine flood/ebb at "now" for the heading. If a phaseHint is supplied,
+  // honour it so the chart reads the saved-line rhythm rather than wall clock.
   const nowPoint = points[nowIdx];
   const next = points[Math.min(points.length - 1, nowIdx + 1)];
-  const phaseLabel = next.level >= nowPoint.level ? 'flood' : 'ebb';
+  const phaseLabel = phaseHint ?? (next.level >= nowPoint.level ? 'flood' : 'ebb');
 
   return (
     <View style={chartStyles.container} testID={testID ?? 'tidal-chart'} accessibilityLabel="tidal chart of saved lines">

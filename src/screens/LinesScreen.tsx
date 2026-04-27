@@ -10,8 +10,9 @@ import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 import { getLines, Line, LineMode } from '../db/database';
-import { Header, EmptyState, Pill, TidalChart, TidalChartMarker } from '../components';
+import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
+import { readCurrent } from '../forecast';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Lines'>;
@@ -47,18 +48,45 @@ function tagsForLine(line: Line): LineFilter[] {
 }
 
 // Map up to 6 most-recent lines onto the tidal chart's 0..1 x-axis.
-// "Now" sits at x = 0.5; older lines drift left toward yesterday's tide.
+// "Now" sits at x ≈ 0.5; older lines drift left toward yesterday's tide.
+// Spreads markers across the 24h window using log-scaled age so a cluster
+// from the same hour doesn't all collapse onto the same point.
 function buildLineMarkers(lines: Line[]): TidalChartMarker[] {
   const recent = lines.slice(0, 6);
   if (recent.length === 0) return [];
   const nowSec = Math.floor(Date.now() / 1000);
-  const oneDay = 86400;
+  const dayWindow = 86400;
   return recent.map((l) => {
-    const ageDays = Math.max(0, Math.min(1, (nowSec - l.created_at) / oneDay));
-    // 0 days old → x ≈ 0.5 (now). 1+ days old → x ≈ 0.0 (left edge).
-    const x = Math.max(0.02, Math.min(0.5, 0.5 - ageDays * 0.5));
+    const ageSec = Math.max(0, nowSec - l.created_at);
+    // log-scaled age: 0s → 0; 1h → ~0.18; 6h → ~0.5; 24h+ → 1
+    const t = Math.min(1, Math.log10(1 + ageSec / 60) / Math.log10(1 + dayWindow / 60));
+    const x = Math.max(0.02, Math.min(0.5, 0.5 - t * 0.5));
     return { id: l.id, x, label: l.content.slice(0, 24) };
   });
+}
+
+// Saved-line rhythm → tide phase. Recent cluster = high; long quiet = low;
+// uptick = flood; slowdown = ebb. Drives the chart's heading in place of
+// wall-clock derivation.
+function phaseFromRhythm(lines: Line[]): 'high' | 'low' | 'flood' | 'ebb' {
+  if (lines.length === 0) return 'low';
+  const nowSec = Math.floor(Date.now() / 1000);
+  const hour = 3600;
+  const dayWindow = 24 * hour;
+  const recent1h = lines.filter((l) => nowSec - l.created_at <= hour).length;
+  const last24 = lines.filter((l) => nowSec - l.created_at <= dayWindow).length;
+  const prev24 = lines.filter((l) => {
+    const age = nowSec - l.created_at;
+    return age > dayWindow && age <= dayWindow * 2;
+  }).length;
+  if (recent1h >= 3) return 'high';
+  const lastTs = Math.max(...lines.map((l) => l.created_at));
+  const sinceLastH = (nowSec - lastTs) / hour;
+  if (sinceLastH > 18) return 'low';
+  if (last24 > prev24 + 1) return 'flood';
+  if (last24 + 1 < prev24) return 'ebb';
+  if (last24 >= 4) return 'high';
+  return last24 >= 2 ? 'flood' : 'ebb';
 }
 
 function lineMatchesFilter(line: Line, f: LineFilter): boolean {
@@ -140,6 +168,7 @@ export default function LinesScreen({ navigation, route }: Props) {
         <TidalChart
           markers={buildLineMarkers(filteredLines)}
           totalCount={totalCount}
+          phaseHint={phaseFromRhythm(filteredLines)}
           testID="depth-stack-chart"
         />
 
@@ -173,6 +202,46 @@ export default function LinesScreen({ navigation, route }: Props) {
             </View>
           </View>
         )}
+
+        {tagFilter && filteredLines.length > 0 && (() => {
+          const reading = readCurrent(tagFilter.kind, tagFilter.value, filteredLines);
+          return (
+            <CurrentReadingCard
+              reading={reading}
+              onAction={() => {
+                // Route the recommended action: shape/distill seeds Verso with
+                // the first line of this current as material; reshape opens
+                // the oldest in this slice; otherwise open the first.
+                const a = reading.action;
+                if (a.kind === 'shape' || a.kind === 'distill') {
+                  const seed = filteredLines[0];
+                  if (seed) {
+                    navigation.navigate('Verso', {
+                      seedContent: seed.content,
+                      seedMode: a.mode,
+                      seedLineId: seed.id,
+                    });
+                  }
+                  return;
+                }
+                if (a.kind === 'reshape') {
+                  const oldest = filteredLines[filteredLines.length - 1];
+                  if (oldest) {
+                    navigation.navigate('Verso', {
+                      seedContent: oldest.content,
+                      seedMode: a.mode ?? 'distill',
+                      seedLineId: oldest.id,
+                    });
+                  }
+                  return;
+                }
+                // fallback: open the first line
+                const first = filteredLines[0];
+                if (first) navigation.navigate('LineDetail', { lineId: first.id });
+              }}
+            />
+          );
+        })()}
 
         {totalCount === 0 ? (
           <EmptyState

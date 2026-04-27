@@ -17,10 +17,11 @@ import {
   TIDE_STATES, TERRAIN_HINTS,
 } from '../theme';
 import {
-  addLine, getLines, getRandomLine, Line,
+  addLine, getLines, Line,
 } from '../db/database';
 import { Header, SwellInput, WaveForecast } from '../components';
 import { RootStackParamList } from '../../App';
+import { computeForecast, Forecast } from '../forecast';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Drift'>;
@@ -36,36 +37,31 @@ export default function DriftScreen({ navigation }: Props) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [surfaced, setSurfaced] = useState<Line | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [recentTide, setRecentTide] = useState<string | null>(null);
   const [savedToday, setSavedToday] = useState(0);
+  const [allLines, setAllLines] = useState<Line[]>([]);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
-    // Pull the most recent tide-tagged line so the inner forecast can lean
-    // into the user's last-felt water state.
     const recent = await getLines();
-    const lastTide = recent.find((l) => l.tide)?.tide ?? null;
-    setRecentTide(lastTide);
-
+    setAllLines(recent);
     const startOfDay = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
     setSavedToday(recent.filter((l) => l.created_at >= startOfDay).length);
-
-    if (Math.random() < 0.4) {
-      const r = await getRandomLine();
-      setSurfaced(r);
-      surfacedOpacity.setValue(0);
-      Animated.timing(surfacedOpacity, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [surfacedOpacity]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load])
+  );
+
+  // Compute the forecast from real signals each render. Cheap — pure function
+  // over already-loaded state — and lets it react as the user types.
+  const forecast: Forecast = React.useMemo(
+    () => computeForecast(
+      allLines,
+      { text: content, tide, terrain, constellation },
+    ),
+    [allLines, content, tide, terrain, constellation]
   );
 
   async function handleSave() {
@@ -83,11 +79,78 @@ export default function DriftScreen({ navigation }: Props) {
     setConstellation(null);
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
+    await load();
   }
 
-  function shapeInVerso() {
+  function shapeInVerso(seedMode?: string) {
     if (!content.trim()) return;
-    navigation.navigate('Verso', { seedContent: content.trim() });
+    navigation.navigate('Verso', { seedContent: content.trim(), seedMode });
+  }
+
+  // Route the forecast's recommended action. If we have an unsaved fragment,
+  // shape/save it. If empty, resurface a candidate or surface a reshape on
+  // the most recent line.
+  function handleForecastAction() {
+    const a = forecast.action;
+    if (a.kind === 'save') {
+      if (content.trim()) handleSave();
+      return;
+    }
+    if (a.kind === 'shape' || a.kind === 'distill') {
+      if (content.trim()) {
+        shapeInVerso(a.mode);
+      } else if (forecast.resurface) {
+        showResurface(forecast.resurface);
+      }
+      return;
+    }
+    if (a.kind === 'reshape' && forecast.resurface) {
+      navigation.navigate('Verso', {
+        seedContent: forecast.resurface.content,
+        seedMode: a.mode ?? 'distill',
+        seedLineId: forecast.resurface.id,
+      });
+      return;
+    }
+    if (a.kind === 'reshape' && allLines[0]) {
+      const last = allLines[0];
+      navigation.navigate('Verso', {
+        seedContent: last.content,
+        seedMode: a.mode ?? 'distill',
+        seedLineId: last.id,
+      });
+      return;
+    }
+    if (a.kind === 'resurface' && forecast.resurface) {
+      showResurface(forecast.resurface);
+    }
+  }
+
+  function showResurface(line: Line) {
+    setSurfaced(line);
+    surfacedOpacity.setValue(0);
+    Animated.timing(surfacedOpacity, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function openSurfaced() {
+    if (surfaced) navigation.navigate('LineDetail', { lineId: surfaced.id });
+  }
+
+  function reshapeSurfaced() {
+    if (!surfaced) return;
+    navigation.navigate('Verso', {
+      seedContent: surfaced.content,
+      seedMode: 'distill',
+      seedLineId: surfaced.id,
+    });
+  }
+
+  function releaseSurfaced() {
+    setSurfaced(null);
   }
 
   const remaining = 200 - content.length;
@@ -180,7 +243,7 @@ export default function DriftScreen({ navigation }: Props) {
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.shapeButton, !content.trim() && styles.disabled]}
-                onPress={shapeInVerso}
+                onPress={() => shapeInVerso()}
                 activeOpacity={0.8}
                 disabled={!content.trim()}
               >
@@ -198,12 +261,43 @@ export default function DriftScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <WaveForecast recentTide={recentTide} savedToday={savedToday} />
+        <WaveForecast
+          forecast={forecast}
+          savedToday={savedToday}
+          onAction={handleForecastAction}
+          onResurface={() => forecast.resurface && showResurface(forecast.resurface)}
+        />
 
         {surfaced && (
           <Animated.View style={[styles.surfaced, { opacity: surfacedOpacity }]}>
-            <Text style={styles.surfacedLabel}>resurfaced</Text>
+            <Text style={styles.surfacedLabel}>a line below the surface</Text>
             <Text style={styles.surfacedContent}>{surfaced.content}</Text>
+            <View style={styles.surfacedActions}>
+              <TouchableOpacity
+                onPress={openSurfaced}
+                style={styles.surfacedButton}
+                activeOpacity={0.8}
+                accessibilityLabel="open this line"
+              >
+                <Text style={styles.surfacedButtonText}>view</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={reshapeSurfaced}
+                style={styles.surfacedButton}
+                activeOpacity={0.8}
+                accessibilityLabel="reshape this line"
+              >
+                <Text style={styles.surfacedButtonText}>reshape</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={releaseSurfaced}
+                style={styles.surfacedRelease}
+                activeOpacity={0.8}
+                accessibilityLabel="release this line back below"
+              >
+                <Text style={styles.surfacedReleaseText}>release</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         )}
 
@@ -501,6 +595,38 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.xl,
     lineHeight: 32,
+  },
+  surfacedActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  surfacedButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.amber,
+  },
+  surfacedButtonText: {
+    color: Colors.amber,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
+  },
+  surfacedRelease: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  surfacedReleaseText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.sm,
+    letterSpacing: 1,
   },
   footer: {
     flexDirection: 'row',
