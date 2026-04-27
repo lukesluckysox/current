@@ -112,8 +112,8 @@ function contextBlock(ctx) {
     parts.push(`recent break: ${ctx.dominantBreak}`);
   }
   if (Array.isArray(ctx.styleHints) && ctx.styleHints.length) {
-    const s = ctx.styleHints.filter((w) => typeof w === 'string').slice(0, 3).map((w) => w.trim().toLowerCase().slice(0, 24)).filter(Boolean);
-    if (s.length) parts.push(`held / wanted: ${s.join(', ')}`);
+    const s = ctx.styleHints.filter((w) => typeof w === 'string').slice(0, 8).map((w) => w.trim().toLowerCase().slice(0, 32)).filter(Boolean);
+    if (s.length) parts.push(`style: ${s.join(', ')}`);
   }
   if (parts.length === 0) return '';
   return `\nContext (silent — do not name, quote, or list these): ${parts.join(' · ')}.`;
@@ -174,15 +174,49 @@ function userPrompt(type, seed, ctx) {
   }
 }
 
+// Mode-aware micro-instructions appended to each edit op. The user-visible
+// label (clearer / sharper / stranger) stays the same, but the model is
+// pointed at the contract of the active mode so the edit deepens rather than
+// flattens the line.
+const MODE_EDIT_CLAUSES = {
+  paradox: {
+    clearer:  'Make the hinge unmistakable, but keep both truths alive — do not resolve the tension.',
+    sharper:  'Tighten the hinge. Strip explanation. Both halves must remain incompatible at the end of the line.',
+    stranger: 'Find a stranger hinge or pairing. The two truths should still pull against each other; do not collapse one side.',
+  },
+  aphorism: {
+    clearer:  'Compress to a portable, declarative line. State the world; do not advise it. Preserve the concrete image.',
+    sharper:  'Cut to the bone. One concrete image, one clean verb. Remove every soft hedge. No second-person commands.',
+    stranger: 'Find the angle a careful writer would reach on the third try — a more specific image, an unexpected pairing — without straining.',
+  },
+  contradiction: {
+    clearer:  'Sharpen the split between belief / words and behavior. Name a specific small action. Do not lecture.',
+    sharper:  'Tighten the gap between what is said and what is done. The behavior is the punchline; do not explain it.',
+    stranger: 'Tilt the contradiction off-axis: a more specific role, ritual, or transaction that exposes the same split.',
+  },
+  aside: {
+    clearer:  'Keep the slant. Make the dry observation land cleanly without becoming a punchline. Keep the speaker idiosyncratic.',
+    sharper:  'Compress without flattening the wit. Drier, more idiosyncratic, never jokey. Avoid setup-and-punchline cadence.',
+    stranger: 'Reach for a stranger pairing — solitude with paperwork, ambition with refunds, grief with logistics — without becoming a stand-up bit.',
+  },
+};
+
+function modeEditClause(op, type) {
+  if (!type || !MODE_EDIT_CLAUSES[type]) return '';
+  const m = MODE_EDIT_CLAUSES[type];
+  return m[op] ? ' ' + m[op] : '';
+}
+
 function editPrompt(op, line, type) {
   const t = (line || '').trim().slice(0, MAX_SEED_LEN);
   const breakHint = VALID_TYPES.has(type) ? ` It is a ${type}. Preserve that contract.` : '';
+  const modeClause = VALID_TYPES.has(type) ? modeEditClause(op, type) : '';
   switch (op) {
     case 'clearer':
       return [
         'Rewrite the following line so its meaning lands on the first read, without losing edge or specificity.',
         'Keep the same length or shorter. Keep concrete imagery. Remove any abstraction that softens the line.',
-        breakHint,
+        breakHint + modeClause,
         '\nLine:',
         t,
         '\nReturn only the rewritten line.',
@@ -191,7 +225,7 @@ function editPrompt(op, line, type) {
       return [
         'Rewrite the following line sharper.',
         'Tighten the verb. Cut every unnecessary word. Keep the bite. Do not add new content; expose what is already there.',
-        breakHint,
+        breakHint + modeClause,
         '\nLine:',
         t,
         '\nReturn only the rewritten line.',
@@ -200,7 +234,7 @@ function editPrompt(op, line, type) {
       return [
         'Rewrite the following line so it tilts a few degrees off the obvious. Keep the same emotional core, but reach for an angle a careful writer would find on the third try.',
         'Use a more specific image, an unexpected pairing, or a turn that surprises without straining.',
-        breakHint,
+        breakHint + modeClause,
         '\nLine:',
         t,
         '\nReturn only the rewritten line.',
@@ -242,15 +276,43 @@ const CLICHE_PATTERNS = [
   /\bhealing\b/i,
   /\btrauma\b/i,
   /\bboundaries\b/i,
-  /^live, laugh/i,
+  /^live,? laugh/i,
   /\byou got this\b/i,
+  /\bbe yourself\b/i,
+  /\binner child\b/i,
+  /\beveryday is\b/i,
+  /\bthe trick is\b/i,
+  /\bthe secret is\b/i,
 ];
 
-function isCliche(line) {
+const FORCED_JOKE_PATTERNS = [
+  /\bwhy is it that\b/i,
+  /\banyone else\b/i,
+  /\bam i right\??$/i,
+  /\bjust me\??$/i,
+];
+
+function isCliche(line, type) {
   if (!line) return true;
   if (CLICHE_PATTERNS.some((re) => re.test(line))) return true;
+  if (FORCED_JOKE_PATTERNS.some((re) => re.test(line))) return true;
   // Generic "X is Y" with no concrete noun is suspect.
   if (/^[A-Z]?(love|life|hope|change|truth)\s+is\s+/i.test(line) && line.split(' ').length < 8) return true;
+  // Mode-mismatch checks — cheap pattern probes.
+  if (type === 'paradox') {
+    // No hinge anywhere — paradox failed its contract.
+    if (!/\b(and yet|even as|but|while|though|despite|the more)\b/i.test(line) && !/[—–]/.test(line)) {
+      return true;
+    }
+  }
+  if (type === 'aphorism') {
+    const words = line.trim().split(/\s+/).filter(Boolean).length;
+    if (words > 18) return true;
+    if (/\?\s*$/.test(line)) return true;
+  }
+  if (type === 'aside') {
+    if (/!\s*$/.test(line)) return true;
+  }
   return false;
 }
 
@@ -374,7 +436,7 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
     );
     // Anti-cliché: if the first pass smells generic, regenerate once with a
     // sharper instruction. Single retry — keeps latency bounded.
-    if (line && isCliche(line)) {
+    if (line && isCliche(line, type)) {
       try {
         line = await complete(
           [{

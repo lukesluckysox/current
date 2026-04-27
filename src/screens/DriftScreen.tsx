@@ -25,6 +25,8 @@ import { computeForecast, Forecast } from '../forecast';
 import {
   getLiveConditions, deriveInnerVector, matchInnerToLive, LiveMatch,
 } from '../surfData';
+import { recommendMode, isVersoMode } from '../lineIntelligence';
+import { dominantBreak } from '../patterns';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Drift'>;
@@ -135,7 +137,47 @@ export default function DriftScreen({ navigation }: Props) {
 
   function shapeInVerso(seedMode?: string) {
     if (!content.trim()) return;
-    navigation.navigate('Verso', { seedContent: content.trim(), seedMode });
+    navigation.navigate('Verso', {
+      seedContent: content.trim(),
+      seedMode,
+      seedForecastSource: forecast.source,
+      seedLiveBreak: liveMatch?.conditions.break.name,
+      seedLiveArchetype: liveMatch?.conditions.break.archetype,
+      seedTide: tide,
+      seedTerrain: terrain,
+      seedConstellation: constellation,
+    });
+  }
+
+  // Refine the forecast's recommended Verso mode using line intelligence.
+  // The forecast's existing rule-based pick is the floor; intelligence may
+  // override it when the seed text + live conditions + recent modes give a
+  // stronger signal. Falls back gracefully when nothing is shaped yet.
+  function refineMode(seedText: string, fallbackMode: string | undefined): string | undefined {
+    const dom = dominantBreak(allLines);
+    const recentModes = [...allLines]
+      .sort((a, b) => b.created_at - a.created_at)
+      .slice(0, 6)
+      .map((l) => l.mode);
+    const intel = recommendMode(seedText, {
+      tide,
+      terrain,
+      constellation,
+      forecastSource: forecast.source,
+      liveArchetype: liveMatch
+        ? // map live break archetype string to intelligence's flavor channel
+          (liveMatch.conditions.break.archetype as string)
+        : null,
+      dominantMode: dom,
+      recentModes,
+    });
+    // If forecast came back with a valid 4-mode pick, only override when
+    // intelligence has a clearly different signal AND the seed is non-trivial.
+    if (isVersoMode(fallbackMode)) {
+      if (seedText.trim().length < 8) return fallbackMode;
+      return intel;
+    }
+    return intel;
   }
 
   // Route the forecast's recommended action. If we have an unsaved fragment,
@@ -149,7 +191,7 @@ export default function DriftScreen({ navigation }: Props) {
     }
     if (a.kind === 'shape') {
       if (content.trim()) {
-        shapeInVerso(a.mode);
+        shapeInVerso(refineMode(content, a.mode));
       } else if (forecast.resurface) {
         showResurface(forecast.resurface);
       }
@@ -158,8 +200,15 @@ export default function DriftScreen({ navigation }: Props) {
     if (a.kind === 'reshape' && forecast.resurface) {
       navigation.navigate('Verso', {
         seedContent: forecast.resurface.content,
-        seedMode: a.mode ?? 'aphorism',
+        seedMode:
+          refineMode(forecast.resurface.content, a.mode) ?? 'aphorism',
         seedLineId: forecast.resurface.id,
+        seedForecastSource: forecast.source,
+        seedLiveBreak: liveMatch?.conditions.break.name,
+        seedLiveArchetype: liveMatch?.conditions.break.archetype,
+        seedTide: tide,
+        seedTerrain: terrain,
+        seedConstellation: constellation,
       });
       return;
     }
@@ -167,8 +216,14 @@ export default function DriftScreen({ navigation }: Props) {
       const last = allLines[0];
       navigation.navigate('Verso', {
         seedContent: last.content,
-        seedMode: a.mode ?? 'aphorism',
+        seedMode: refineMode(last.content, a.mode) ?? 'aphorism',
         seedLineId: last.id,
+        seedForecastSource: forecast.source,
+        seedLiveBreak: liveMatch?.conditions.break.name,
+        seedLiveArchetype: liveMatch?.conditions.break.archetype,
+        seedTide: tide,
+        seedTerrain: terrain,
+        seedConstellation: constellation,
       });
       return;
     }
@@ -195,8 +250,14 @@ export default function DriftScreen({ navigation }: Props) {
     if (!surfaced) return;
     navigation.navigate('Verso', {
       seedContent: surfaced.content,
-      seedMode: 'aphorism',
+      seedMode: refineMode(surfaced.content, 'aphorism') ?? 'aphorism',
       seedLineId: surfaced.id,
+      seedForecastSource: forecast.source,
+      seedLiveBreak: liveMatch?.conditions.break.name,
+      seedLiveArchetype: liveMatch?.conditions.break.archetype,
+      seedTide: tide,
+      seedTerrain: terrain,
+      seedConstellation: constellation,
     });
   }
 

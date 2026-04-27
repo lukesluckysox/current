@@ -28,7 +28,20 @@ export type LineFilter = {
 
 export type RootStackParamList = {
   Drift: undefined;
-  Verso: { seedContent?: string; seedMode?: string; seedLineId?: number } | undefined;
+  Verso: {
+    seedContent?: string;
+    seedMode?: string;
+    seedLineId?: number;
+    // Optional context threaded through from Drift: forecast source, the
+    // matched live break / archetype, and the active fragment tags. Used
+    // internally to enrich the /api/generate context packet — never shown.
+    seedForecastSource?: string;
+    seedLiveBreak?: string;
+    seedLiveArchetype?: string;
+    seedTide?: string | null;
+    seedTerrain?: string | null;
+    seedConstellation?: string | null;
+  } | undefined;
   Lines: { filter?: LineFilter } | undefined;
   LineDetail: { lineId: number };
   Settings: undefined;

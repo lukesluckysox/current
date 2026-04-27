@@ -27,6 +27,9 @@ import {
   readBreakLocal, restraint as readRestraint,
   applyFeedback, emptyStyleHints, StyleHints, ResonanceVote,
 } from '../patterns';
+import {
+  recommendMode, inferVoiceProfile, buildContextPacket, pickFallback,
+} from '../lineIntelligence';
 
 const VALID_MODES: VersoMode[] = ['paradox', 'aphorism', 'contradiction', 'aside'];
 
@@ -43,9 +46,17 @@ function resolveMode(raw: string | undefined): VersoMode {
   return 'paradox';
 }
 
-function localFallback(type: GenerateBreak, current: string | null): string {
+function localFallback(
+  type: GenerateBreak,
+  current: string | null,
+  voice?: ReturnType<typeof inferVoiceProfile>,
+): string {
   const bank = LOCAL_FALLBACK_LINES[type];
   if (!bank || bank.length === 0) return current ?? '';
+  // Intelligence-aware pick: filter by quality, bias toward voice profile.
+  const picked = pickFallback(bank, type, { exclude: current ?? '', voice });
+  if (picked) return picked;
+  // Last-ditch random pick if everything got filtered.
   let pick = bank[Math.floor(Math.random() * bank.length)];
   let tries = 0;
   while (pick === current && tries < 5) {
@@ -63,6 +74,12 @@ type Props = {
 export default function VersoScreen({ navigation, route }: Props) {
   const seedContent = route.params?.seedContent;
   const initialMode = resolveMode(route.params?.seedMode);
+  const seedForecastSource = route.params?.seedForecastSource ?? null;
+  const seedLiveBreak = route.params?.seedLiveBreak ?? null;
+  const seedLiveArchetype = route.params?.seedLiveArchetype ?? null;
+  const seedTide = route.params?.seedTide ?? null;
+  const seedTerrain = route.params?.seedTerrain ?? null;
+  const seedConstellation = route.params?.seedConstellation ?? null;
 
   const [mode, setMode] = useState<VersoMode>(initialMode);
 
@@ -117,24 +134,58 @@ export default function VersoScreen({ navigation, route }: Props) {
     navigation.navigate('Lines');
   }
 
+  // User-voice profile inferred from saved/favourited lines. Lightweight, no
+  // UI; used to bias generation context and local fallback selection.
+  const voiceProfile = useMemo(() => inferVoiceProfile(allLines), [allLines]);
+
+  // Recently-saved Verso modes — used by the break reader to avoid pinning
+  // the user to a single register.
+  const recentModes = useMemo(
+    () =>
+      [...allLines]
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, 6)
+        .map((l) => l.mode),
+    [allLines],
+  );
+
   // Context packet sent with /api/generate. Built from saved lines, the
-  // active fragment's tags, the user's lexicon, and any persisted style hints.
+  // active fragment's tags, the user's lexicon, voice profile, and any
+  // persisted style hints. Stays compact — the server caps further.
   const contextPacket = useMemo(() => {
     const lex = buildLexicon(allLines, 8).map((e) => e.word);
     const cur = findCurrents(allLines, 4).map((c) =>
       c.kind === 'word' ? c.value : `${c.kind}:${c.value}`,
     );
     const dom = dominantBreak(allLines);
-    return {
-      tide: null,
-      terrain: null,
-      constellation: null,
+    const recommended = recommendMode(shaped, {
+      tide: seedTide,
+      terrain: seedTerrain,
+      constellation: seedConstellation,
+      forecastSource: seedForecastSource,
+      liveArchetype: seedLiveArchetype,
+      dominantMode: dom,
+      recentModes,
+    });
+    return buildContextPacket({
+      tide: seedTide,
+      terrain: seedTerrain,
+      constellation: seedConstellation,
       lexicon: lex,
       currents: cur,
-      dominantBreak: dom ?? null,
+      dominantMode: dom ?? null,
+      voiceTokens: voiceProfile.styleTokens,
+      forecastSource: seedForecastSource,
+      liveBreak: seedLiveBreak,
+      liveArchetype: seedLiveArchetype,
+      recommendedMode: recommended,
       styleHints: [...styleHints.wanted, ...styleHints.held.slice(0, 4)].slice(0, 6),
-    };
-  }, [allLines, styleHints]);
+    });
+  }, [
+    allLines, shaped, recentModes, voiceProfile, styleHints,
+    seedTide, seedTerrain, seedConstellation,
+    seedForecastSource, seedLiveBreak, seedLiveArchetype,
+  ]);
 
   async function handleGenerate() {
     if (generating) return;
@@ -150,7 +201,7 @@ export default function VersoScreen({ navigation, route }: Props) {
       if (result.ok) {
         setShaped(result.line);
       } else {
-        const fallback = localFallback(mode, previous.trim() || null);
+        const fallback = localFallback(mode, previous.trim() || null, voiceProfile);
         setShaped(fallback);
         const labels: Record<string, string> = {
           timeout: 'slow connection — local line',
@@ -163,7 +214,7 @@ export default function VersoScreen({ navigation, route }: Props) {
         setGenerateError(labels[result.error.kind] ?? 'local line');
       }
     } catch {
-      setShaped(localFallback(mode, previous.trim() || null));
+      setShaped(localFallback(mode, previous.trim() || null, voiceProfile));
       setGenerateError('offline — local line');
     } finally {
       setGenerating(false);
@@ -212,8 +263,27 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   const modeMeta = VERSO_MODES.find((m) => m.id === mode)!;
 
-  // Why-this-break recommendation, computed locally from the canvas.
-  const breakRead = useMemo(() => readBreakLocal(shaped), [shaped]);
+  // Why-this-break recommendation, computed locally from the canvas. Falls
+  // back through: rule-based reader (with a reason string), then the wider
+  // intelligence-driven recommender (signals + tags + recent-mode context).
+  // The wider recommender only contributes when the rule reader is silent
+  // and the intelligence-pick differs from the active mode — keeping the
+  // surface unchanged when there's nothing to say.
+  const breakRead = useMemo(() => {
+    const rule = readBreakLocal(shaped);
+    if (rule) return rule;
+    if (!shaped.trim() || shaped.trim().length < 6) return null;
+    const dom = dominantBreak(allLines);
+    const intelMode = recommendMode(shaped, {
+      dominantMode: dom,
+      recentModes,
+    });
+    if (intelMode === mode) return null;
+    return {
+      type: intelMode,
+      reason: 'a different break may carry this better.',
+    } as const;
+  }, [shaped, allLines, recentModes, mode]);
   const restraintSig = useMemo(() => readRestraint(shaped), [shaped]);
 
   const seedLen = shaped.trim().length;
