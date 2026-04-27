@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Share,
 } from 'react-native';
+import { confirm, notify } from '../confirm';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
@@ -42,22 +42,17 @@ export default function SettingsScreen({ navigation }: Props) {
   );
 
   async function handleClearSeeds() {
-    Alert.alert(
-      'Drop the sample lines?',
-      `${seedCount} sample line${seedCount === 1 ? '' : 's'} planted on first run will leave the archive. Anything you've kept stays.`,
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Release samples',
-          style: 'destructive',
-          onPress: async () => {
-            const removed = await deleteSeedLines();
-            setSeedCount(0);
-            Alert.alert('Released', `${removed} sample line${removed === 1 ? '' : 's'} dropped.`);
-          },
-        },
-      ]
-    );
+    const ok = await confirm({
+      title: 'Drop the sample lines?',
+      message: `${seedCount} sample line${seedCount === 1 ? '' : 's'} planted on first run will leave the archive. Anything you've kept stays.`,
+      confirmLabel: 'Release samples',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!ok) return;
+    const removed = await deleteSeedLines();
+    setSeedCount(0);
+    notify('Released', `${removed} sample line${removed === 1 ? '' : 's'} dropped.`);
   }
 
   async function handleExport() {
@@ -68,21 +63,17 @@ export default function SettingsScreen({ navigation }: Props) {
   }
 
   async function handleClearData() {
-    Alert.alert(
-      'Release every line?',
-      'This will let every saved line leave the archive. This cannot be undone.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Release all',
-          style: 'destructive',
-          onPress: async () => {
-            await clearAllData();
-            Alert.alert('Released', 'The archive is empty.');
-          },
-        },
-      ]
-    );
+    const ok = await confirm({
+      title: 'Release every line?',
+      message: 'This will let every saved line leave the archive — including anything you have kept. This cannot be undone.',
+      confirmLabel: 'Release all',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!ok) return;
+    await clearAllData();
+    setSeedCount(0);
+    notify('Released', 'The archive is empty.');
   }
 
   return (
@@ -138,17 +129,15 @@ export default function SettingsScreen({ navigation }: Props) {
             </Text>
             <TouchableOpacity
               style={styles.actionRow}
-              onPress={() => {
-                Alert.alert('Sign out?', 'You will need to sign in again to use Current.', [
-                  { text: 'Stay', style: 'cancel' },
-                  {
-                    text: 'Sign out',
-                    style: 'destructive',
-                    onPress: () => {
-                      auth.signOut();
-                    },
-                  },
-                ]);
+              onPress={async () => {
+                const ok = await confirm({
+                  title: 'Sign out?',
+                  message: 'You will need to sign in again to use Current.',
+                  confirmLabel: 'Sign out',
+                  cancelLabel: 'Stay',
+                  destructive: true,
+                });
+                if (ok) auth.signOut();
               }}
               activeOpacity={0.75}
             >

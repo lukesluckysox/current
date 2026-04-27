@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Share,
   Platform,
 } from 'react-native';
+import { confirm } from '../confirm';
 import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
@@ -160,23 +160,18 @@ export default function LineDetailScreen({ navigation, route }: Props) {
     await load();
   }
 
-  function handleRelease() {
+  async function handleRelease() {
     if (!line) return;
-    Alert.alert(
-      'Release this line?',
-      'It will leave the archive.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Release',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteLine(line.id);
-            navigation.goBack();
-          },
-        },
-      ]
-    );
+    const ok = await confirm({
+      title: 'Release this line?',
+      message: 'It will leave the archive.',
+      confirmLabel: 'Release',
+      cancelLabel: 'Keep',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteLine(line.id);
+    navigation.goBack();
   }
 
   function followCurrent(f: LineFilter) {
