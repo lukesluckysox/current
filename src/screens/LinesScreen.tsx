@@ -245,12 +245,12 @@ export default function LinesScreen({ navigation, route }: Props) {
 
         {totalCount === 0 ? (
           <EmptyState
-            title={tagFilter ? 'no lines on this current' : 'no lines yet'}
-            subtitle={tagFilter ? 'try a different current' : 'drop in, shape it, keep it'}
+            title={tagFilter ? 'no lines on this current' : 'open water'}
+            subtitle={tagFilter ? 'follow another current, or clear it' : 'drop in · shape it · keep it'}
           />
         ) : (
           <>
-            <DepthBand label="surface" sublabel="the most recent three" />
+            <DepthBand label="surface" sublabel="the three most recent lines" />
             {surface.map((line) => (
               <LineRow
                 key={line.id}
@@ -264,7 +264,7 @@ export default function LinesScreen({ navigation, route }: Props) {
               <>
                 <DepthBand
                   label={safePage === 0 ? 'deeper water' : `depth · page ${safePage + 1} / ${totalPages}`}
-                  sublabel={`${deeper.length} held below`}
+                  sublabel={`${deeper.length} ${deeper.length === 1 ? 'line' : 'lines'} kept below`}
                 />
                 {pageLines.map((line) => (
                   <LineRow
@@ -431,10 +431,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   bandSublabel: {
-    color: Colors.muted,
+    color: Colors.mutedLight,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.sm,
     marginTop: 2,
+    lineHeight: 20,
   },
   entry: {
     paddingVertical: Spacing.lg,

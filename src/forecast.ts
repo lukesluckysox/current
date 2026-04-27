@@ -153,7 +153,7 @@ function inferSource(
   if (lastLine.tide && /low tide|dead calm|slack water|golden hour|glass water/i.test(lastLine.tide)) {
     return 'quiet after release';
   }
-  if (lastLine.tide && /storm front|building chop|heavy current|rising swell/i.test(lastLine.tide)) {
+  if (lastLine.tide && /storm front|building chop|heavy current|returning swell|rising swell/i.test(lastLine.tide)) {
     return 'fresh swell';
   }
   return 'returning memory';
@@ -165,7 +165,7 @@ function inferTexture(fragment: FragmentContext, lastLine: Line | null): Texture
   const tide = (fragment.tide ?? lastLine?.tide ?? '').toLowerCase();
   if (/glass water|dead calm|slack water|golden hour/.test(tide)) return 'glass';
   if (/storm front|building chop|heavy current/.test(tide)) return 'choppy';
-  if (/rising swell|offshore winds/.test(tide)) return 'light texture';
+  if (/returning swell|rising swell|offshore winds/.test(tide)) return 'light texture';
   const terrain = (fragment.terrain ?? lastLine?.terrain ?? '').toLowerCase();
   if (/restless|sharp/.test(terrain)) return 'textured';
   if (/still|porous/.test(terrain)) return 'glass';
@@ -222,12 +222,12 @@ function inferConditions(
 }
 
 const PHRASE_BANK: Record<ForecastConditions, string[]> = {
-  glass:    ['glass — the rare hour', 'no wind, only listening', 'the line writes itself'],
-  clean:    ['lines are arriving clean', 'the page is glassy', 'every sentence breaks true'],
+  glass:    ['slack water — the rare hour', 'no wind, only listening', 'the line writes itself'],
+  clean:    ['clean lines, breaking true', 'the page is glassy', 'every sentence lands'],
   fair:     ['workable, with texture', 'small wind on the surface', 'lines come in sets'],
-  building: ['something is gathering', 'the swell is building', 'feel it under the words'],
+  building: ['heavy current under the words', 'the swell is building', 'something is gathering'],
   fading:   ['the set is letting go', 'lines stretch and loosen', 'the water is releasing'],
-  choppy:   ['cross-chop, hold lines short', 'wind on the page', 'distill before it slips'],
+  choppy:   ['building chop — hold lines short', 'wind on the page', 'distill before it slips'],
 };
 
 // ─── action recommendation ───────────────────────────────────────────────────

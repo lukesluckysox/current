@@ -174,15 +174,28 @@ type WaveForecastProps = {
   testID?: string;
 };
 
+// Map the engine's terse condition keys to legible, surf-coherent labels.
+// Keeps the metaphor (chop / clean lines / building set) without expanding
+// the type system.
+const CONDITIONS_LABEL: Record<string, string> = {
+  glass:    'slack water',
+  clean:    'clean lines',
+  fair:     'fair, with texture',
+  building: 'building swell',
+  fading:   'set fading',
+  choppy:   'building chop',
+};
+
 export function WaveForecast({ forecast: f, savedToday, onAction, onResurface, testID }: WaveForecastProps) {
   const heightLow = f.swellHeight.toFixed(1);
   const heightHigh = f.swellHeightHigh.toFixed(1);
+  const conditionsLabel = CONDITIONS_LABEL[f.conditions] ?? f.conditions;
 
   return (
     <View style={waveStyles.container} testID={testID ?? 'wave-forecast'}>
       <View style={waveStyles.header}>
         <Text style={waveStyles.label}>inner forecast</Text>
-        <Text style={waveStyles.state}>{f.conditions}</Text>
+        <Text style={waveStyles.state}>{conditionsLabel}</Text>
       </View>
 
       <View style={waveStyles.readoutRow}>
@@ -276,7 +289,14 @@ function truncate(s: string, max: number): string {
 function ForecastChip({ label, sub }: { label: string; sub: string }) {
   return (
     <View style={waveStyles.chip} accessibilityLabel={`${sub} ${label}`}>
-      <Text style={waveStyles.chipValue}>{label}</Text>
+      <Text
+        style={waveStyles.chipValue}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
+        {label}
+      </Text>
       <Text style={waveStyles.chipSub}>{sub}</Text>
     </View>
   );
@@ -563,12 +583,13 @@ const waveStyles = StyleSheet.create({
     textAlign: 'center',
   },
   reading: {
-    color: Colors.muted,
+    color: Colors.mutedLight,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.sm,
     textAlign: 'center',
     marginTop: Spacing.xs,
-    lineHeight: 20,
+    lineHeight: 22,
+    paddingHorizontal: Spacing.sm,
   },
   actionRow: {
     flexDirection: 'row',
@@ -1119,19 +1140,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
   },
   emptyTitle: {
-    color: Colors.muted,
+    color: Colors.sandLight,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.xl,
     textAlign: 'center',
     marginBottom: Spacing.sm,
   },
   emptySubtitle: {
-    color: Colors.muted,
+    color: Colors.mutedLight,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.sm,
     textAlign: 'center',
-    opacity: 0.7,
     lineHeight: 20,
+    letterSpacing: 0.5,
   },
   pill: {
     paddingHorizontal: Spacing.md,

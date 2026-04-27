@@ -62,7 +62,7 @@ export const FontSizes = {
 
 export const TIDE_STATES = [
   'glass water',
-  'rising swell',
+  'returning swell',
   'offshore winds',
   'storm front',
   'low tide',
@@ -73,15 +73,18 @@ export const TIDE_STATES = [
 ];
 
 // Tide colors stay inside the muted ocean family — variations of teal,
-// sea-glass, kelp, and mist.
+// sea-glass, kelp, and mist. All values sit in the cool ocean range; no
+// warm/yellow cast anywhere on the atlas.
 export const TIDE_COLORS: Record<string, string> = {
   'glass water': '#5C9AA0',         // pale cool sea glass
-  'rising swell': '#3A7880',        // deeper cool turquoise
+  'returning swell': '#3A7880',     // deeper cool turquoise
+  'rising swell': '#3A7880',        // legacy alias — same hue
   'offshore winds': '#6FA6AC',      // foam mist teal
   'storm front': '#1F3A3F',         // storm-dimmed deep
   'low tide': '#6A8E91',            // bleached cool kelp
   'heavy current': '#2C5A5C',       // submerged channel
   'slack water': '#6E9A9C',         // dusk teal — the pause between tides
+  'golden hour calm': '#6E9A9C',    // legacy alias — same hue
   'building chop': '#456E70',       // grey-teal chop
   'dead calm': '#163034',           // abyss
 };
