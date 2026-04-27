@@ -203,21 +203,24 @@ export function WaveForecast({
 
   return (
     <View style={waveStyles.container} testID={testID ?? 'wave-forecast'}>
-      <View style={waveStyles.header}>
-        <Text style={waveStyles.label}>inner forecast</Text>
-        <View style={waveStyles.headerRight}>
-          <Text style={waveStyles.state}>{conditionsLabel}</Text>
-          <TouchableOpacity
-            onPress={() => setInfoOpen(true)}
-            style={waveStyles.infoButton}
-            activeOpacity={0.7}
-            accessibilityLabel="what this card means"
-            testID="forecast-info"
-            hitSlop={8}
-          >
-            <Text style={waveStyles.infoButtonText}>i</Text>
-          </TouchableOpacity>
+      <View style={waveStyles.headerBlock}>
+        <View style={waveStyles.header}>
+          <Text style={waveStyles.label}>inner forecast</Text>
+          <View style={waveStyles.headerRight}>
+            <Text style={waveStyles.state}>{conditionsLabel}</Text>
+            <TouchableOpacity
+              onPress={() => setInfoOpen(true)}
+              style={waveStyles.infoButton}
+              activeOpacity={0.7}
+              accessibilityLabel="what this card means"
+              testID="forecast-info"
+              hitSlop={8}
+            >
+              <Text style={waveStyles.infoButtonText}>i</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+        <ResemblanceLine forecast={f} liveMatch={liveMatch} liveStatus={liveStatus} />
       </View>
 
       <View style={waveStyles.readoutRow}>
@@ -261,7 +264,6 @@ export function WaveForecast({
       </View>
 
       <View style={waveStyles.confidenceRow}>
-        <Text style={waveStyles.confidenceLabel}>writing conditions</Text>
         <View style={waveStyles.confidenceTrack}>
           <View style={[waveStyles.confidenceFill, { width: `${f.confidence}%` }]} />
         </View>
@@ -269,7 +271,6 @@ export function WaveForecast({
       </View>
 
       <Text style={waveStyles.phrase}>{f.phrase}</Text>
-      <ResemblanceBlock forecast={f} liveMatch={liveMatch} liveStatus={liveStatus} />
       <Text style={waveStyles.reading} testID="forecast-reading">{f.reading}</Text>
       {f.interpretive && (
         <Text style={waveStyles.interpretive} testID="forecast-interpretive">
@@ -319,15 +320,15 @@ export function WaveForecast({
   );
 }
 
-// ─── ResemblanceBlock ────────────────────────────────────────────────────────
+// ─── ResemblanceLine ─────────────────────────────────────────────────────────
 //
-// Shows the real-world break the inner read currently most resembles. When
-// live marine data is available, names a real break by its current
-// conditions and adds a one-line "why". When live data is loading or
-// unreachable, falls back to the engine's deterministic resemblance and
-// notes the offline state quietly. Never claims to be a real surf report.
+// Compact two-line live-match readout that sits directly under the "inner
+// forecast" title. When live marine data is available, names the real break
+// whose water most resembles the inner read and shows a one-line summary.
+// When loading or unreachable, falls back to the engine's deterministic
+// resemblance with a quiet status note. Never claims to be a real surf report.
 
-function ResemblanceBlock({
+function ResemblanceLine({
   forecast: f, liveMatch, liveStatus,
 }: {
   forecast: Forecast;
@@ -337,27 +338,23 @@ function ResemblanceBlock({
   if (liveMatch) {
     const c = liveMatch.conditions;
     return (
-      <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
-        <Text style={waveStyles.resemblance}>
-          most resembles live water at{' '}
+      <View style={waveStyles.resemblanceLine} testID="forecast-resemblance">
+        <Text style={waveStyles.resemblance} numberOfLines={2}>
+          live match ·{' '}
           <Text style={waveStyles.resemblanceName}>{c.break.name}</Text>
           <Text style={waveStyles.resemblanceRegion}> · {c.break.region}</Text>
         </Text>
-        <Text style={waveStyles.liveSummary} testID="forecast-live-summary">
+        <Text style={waveStyles.liveSummary} testID="forecast-live-summary" numberOfLines={1}>
           {liveMatch.summary}
-        </Text>
-        <Text style={waveStyles.liveReason} testID="forecast-live-reason">
-          {liveMatch.reason}
         </Text>
       </View>
     );
   }
-  // Loading state: brief, in voice. Doesn't replace existing fallback feel.
   if (liveStatus === 'loading') {
     return (
-      <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
-        <Text style={waveStyles.resemblance}>
-          most resembles ·{' '}
+      <View style={waveStyles.resemblanceLine} testID="forecast-resemblance">
+        <Text style={waveStyles.resemblance} numberOfLines={2}>
+          resembles ·{' '}
           <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
         </Text>
         <Text style={waveStyles.liveStatus} testID="forecast-live-status">
@@ -366,12 +363,10 @@ function ResemblanceBlock({
       </View>
     );
   }
-  // Offline / unavailable: show the deterministic felt analogy with a quiet
-  // note that the live signal is missing.
   return (
-    <View style={waveStyles.resemblanceBlock} testID="forecast-resemblance">
-      <Text style={waveStyles.resemblance}>
-        most resembles ·{' '}
+    <View style={waveStyles.resemblanceLine} testID="forecast-resemblance">
+      <Text style={waveStyles.resemblance} numberOfLines={2}>
+        resembles ·{' '}
         <Text style={waveStyles.resemblanceName}>{f.resemblance.name}</Text> — {f.resemblance.feel}
       </Text>
       {liveStatus === 'offline' && (
@@ -651,11 +646,13 @@ const waveStyles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.navy,
   },
+  headerBlock: {
+    marginBottom: Spacing.sm,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: Spacing.sm,
   },
   label: {
     color: Colors.muted,
@@ -692,8 +689,8 @@ const waveStyles = StyleSheet.create({
   compassRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    marginBottom: Spacing.md,
-    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+    paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     borderRadius: Radius.sm,
     backgroundColor: Colors.deepNavy,
@@ -735,7 +732,7 @@ const waveStyles = StyleSheet.create({
   readoutRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   heightBlock: {
     flex: 1,
@@ -800,7 +797,7 @@ const waveStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   chip: {
     flexBasis: '23%',
@@ -830,15 +827,6 @@ const waveStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: Spacing.sm,
-  },
-  confidenceLabel: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginRight: Spacing.sm,
-    flexShrink: 0,
   },
   confidenceTrack: {
     flex: 1,
@@ -871,9 +859,6 @@ const waveStyles = StyleSheet.create({
     color: Colors.sand,
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.sm,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
   },
   resemblanceName: {
     color: Colors.amber,
@@ -884,31 +869,21 @@ const waveStyles = StyleSheet.create({
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.xs,
   },
-  resemblanceBlock: {
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
+  resemblanceLine: {
+    marginTop: 4,
   },
   liveSummary: {
     color: Colors.mutedLight,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.xs,
-    textAlign: 'center',
-    marginTop: 2,
+    marginTop: 1,
     letterSpacing: 0.5,
-  },
-  liveReason: {
-    color: Colors.muted,
-    fontFamily: Fonts.serifItalic,
-    fontSize: FontSizes.xs,
-    textAlign: 'center',
-    marginTop: 2,
   },
   liveStatus: {
     color: Colors.muted,
     fontFamily: Fonts.sans,
     fontSize: FontSizes.xs,
-    textAlign: 'center',
-    marginTop: 2,
+    marginTop: 1,
     letterSpacing: 0.5,
     fontStyle: 'italic',
   },
@@ -941,7 +916,7 @@ const waveStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     gap: Spacing.sm,
   },
   actionHint: {
