@@ -8,11 +8,12 @@ import * as SQLite from 'expo-sqlite';
 // Verso (which now contains the former Paradox tool as a mode).
 
 export type LineMode =
-  | 'fragment'   // raw drift capture
-  | 'complete'   // verso fill-in-the-blank
-  | 'paradox'    // verso paradox mode (formerly standalone)
-  | 'distill'    // future verso modes
-  | 'aphorism'
+  | 'fragment'        // raw drift capture
+  | 'complete'        // verso fill-in-the-blank
+  | 'paradox'         // verso paradox mode
+  | 'distill'         // verso distill mode
+  | 'aphorism'        // verso aphorism mode
+  | 'contradiction'   // verso contradiction mode (LLM-backed)
   | 'invert';
 
 export type Line = {

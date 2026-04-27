@@ -187,12 +187,41 @@ export const TERRAIN_HINTS = [
   'hardened',
 ];
 
-// Verso shaping modes. Paradox is now folded in here as one of the modes.
+// Verso shaping modes. Paradox / aphorism / contradiction are first-class
+// breaks here and are wired to LLM generation (see src/llm.ts). The local
+// fallback banks below are used when the LLM is unreachable.
 export const VERSO_MODES = [
-  { id: 'complete', label: 'complete', hint: 'fill the blanks' },
-  { id: 'paradox',  label: 'paradox',  hint: 'a truth that undoes itself' },
-  { id: 'distill',  label: 'distill',  hint: 'shorter, truer' },
-  { id: 'aphorism', label: 'aphorism', hint: 'a single line, sharpened' },
-  { id: 'invert',   label: 'invert',   hint: 'flip it on its head' },
+  { id: 'complete',      label: 'complete',      hint: 'fill the blanks' },
+  { id: 'paradox',       label: 'paradox',       hint: 'a truth that undoes itself' },
+  { id: 'aphorism',      label: 'aphorism',      hint: 'a single line, sharpened' },
+  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other' },
+  { id: 'distill',       label: 'distill',       hint: 'shorter, truer' },
+  { id: 'invert',        label: 'invert',        hint: 'flip it on its head' },
 ] as const;
 export type VersoMode = typeof VERSO_MODES[number]['id'];
+
+// Local fallbacks used only when /api/generate is unreachable. Kept terse and
+// rotated by Math.random; the LLM is the primary creative engine.
+export const LOCAL_FALLBACK_LINES: Record<'aphorism' | 'paradox' | 'contradiction', string[]> = {
+  aphorism: [
+    'A clean room is a small argument with the future.',
+    'You learn the city by the routes you keep refusing.',
+    'Patience is a slower kind of appetite.',
+    'Every habit is a love letter, signed and unread.',
+    'Sleep is the only weather we make ourselves.',
+  ],
+  paradox: [
+    'The closer the deadline, the longer each minute.',
+    'I trust people most in the rooms I never enter.',
+    'The more I rehearse the line, the less I mean it.',
+    'A door open all winter stops being a door.',
+    'You only notice the silence after the fan stops.',
+  ],
+  contradiction: [
+    'I want a quieter life and louder evidence of it.',
+    'I keep my freedoms in a drawer I never open.',
+    'I love the city for the version of me it refuses.',
+    'I save the good wine for the people who never come over.',
+    'I miss the noise I spent a year escaping.',
+  ],
+};

@@ -5,7 +5,7 @@
     "buildCommand": "npm install && npm run build:web"
   },
   "deploy": {
-    "startCommand": "node_modules/.bin/serve dist --single --listen $PORT",
+    "startCommand": "node server/index.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }

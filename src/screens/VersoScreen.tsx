@@ -16,12 +16,32 @@ import {
   Colors, Fonts, FontSizes, Spacing, Radius,
   VERSO_TEMPLATES, VERSO_MODES, VersoMode, PARADOX_TOPICS,
   COMPLETE_FAMILIES, COMPLETE_TEMPLATES, CompleteFamily,
+  LOCAL_FALLBACK_LINES,
 } from '../theme';
 import {
   addLine, addCustomTemplate, getCustomTemplates,
 } from '../db/database';
 import { Header, EmptyState, Pill } from '../components';
 import { RootStackParamList } from '../../App';
+import { generateLine, GenerateBreak } from '../llm';
+
+const LLM_MODES: VersoMode[] = ['aphorism', 'paradox', 'contradiction'];
+
+function isLlmMode(mode: VersoMode): mode is GenerateBreak {
+  return LLM_MODES.includes(mode);
+}
+
+function localFallback(type: GenerateBreak, current: string | null): string {
+  const bank = LOCAL_FALLBACK_LINES[type];
+  if (!bank || bank.length === 0) return current ?? '';
+  let pick = bank[Math.floor(Math.random() * bank.length)];
+  let tries = 0;
+  while (pick === current && tries < 5) {
+    pick = bank[Math.floor(Math.random() * bank.length)];
+    tries++;
+  }
+  return pick;
+}
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Verso'>;
@@ -101,10 +121,12 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [customTemplate, setCustomTemplate] = useState('');
   const [activeFamily, setActiveFamily] = useState<CompleteFamily>('confession');
 
-  // Free-text shaping (paradox / distill / aphorism / invert)
+  // Free-text shaping (paradox / distill / aphorism / invert / contradiction)
   const [shaped, setShaped] = useState(seedContent ?? '');
   const [topic, setTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (seedContent) setShaped(seedContent);
@@ -169,6 +191,40 @@ export default function VersoScreen({ navigation, route }: Props) {
     setTopic(null);
     setCustomTopic('');
     navigation.navigate('Lines');
+  }
+
+  async function handleGenerateShaped() {
+    if (!isLlmMode(mode) || generating) return;
+    setGenerating(true);
+    setGenerateError(null);
+    // Seed: prefer the user's free-text canvas (their own thinking) over the
+    // navigation-time seedContent, since the canvas may have been edited.
+    const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
+    const previous = shaped;
+    try {
+      const result = await generateLine(mode, seed);
+      if (result.ok) {
+        setShaped(result.line);
+      } else {
+        // Fall back to a different local line, never overwrite with a duplicate.
+        const fallback = localFallback(mode, previous.trim() || null);
+        setShaped(fallback);
+        const labels: Record<string, string> = {
+          timeout: 'slow connection — local line',
+          unavailable: 'live model offline — local line',
+          rate_limited: 'too many in a moment — local line',
+          empty: 'model went quiet — local line',
+          bad_request: 'try a shorter seed',
+          network: 'offline — local line',
+        };
+        setGenerateError(labels[result.error.kind] ?? 'local line');
+      }
+    } catch {
+      setShaped(localFallback(mode, previous.trim() || null));
+      setGenerateError('offline — local line');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function handleSaveCustomTemplate() {
@@ -404,14 +460,34 @@ export default function VersoScreen({ navigation, route }: Props) {
               </>
             )}
 
-            <Text style={styles.sectionLabel}>{modeMeta.label}</Text>
+            <View style={styles.shapingHeader}>
+              <Text style={styles.sectionLabel}>{modeMeta.label}</Text>
+              {isLlmMode(mode) && (
+                <TouchableOpacity
+                  onPress={handleGenerateShaped}
+                  style={[styles.generateButton, generating && styles.saveButtonDisabled]}
+                  activeOpacity={0.8}
+                  disabled={generating}
+                  accessibilityLabel={`generate ${mode}`}
+                  testID={`generate-${mode}`}
+                >
+                  <Text style={styles.generateButtonText}>
+                    {generating ? 'thinking…' : 'generate ✦'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {isLlmMode(mode) && generateError && (
+              <Text style={styles.generateError}>{generateError}</Text>
+            )}
             <TextInput
               value={shaped}
-              onChangeText={(t) => setShaped(t.slice(0, 280))}
+              onChangeText={(t) => { setShaped(t.slice(0, 280)); if (generateError) setGenerateError(null); }}
               placeholder={
                 mode === 'paradox' ? 'a truth that undoes itself…' :
                 mode === 'distill' ? 'shorter, truer…' :
                 mode === 'aphorism' ? 'one line, sharpened…' :
+                mode === 'contradiction' ? 'two truths against each other…' :
                 'flip it…'
               }
               placeholderTextColor={Colors.muted}
@@ -419,6 +495,7 @@ export default function VersoScreen({ navigation, route }: Props) {
               multiline
               selectionColor={Colors.amber}
               autoCorrect={false}
+              editable={!generating}
             />
 
             <View style={styles.saveRow}>
@@ -693,6 +770,18 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     paddingVertical: Spacing.sm,
     marginBottom: Spacing.lg,
+  },
+  shapingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  generateError: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.xs,
+    marginBottom: Spacing.sm,
   },
   writeInput: {
     color: Colors.saltWhite,
