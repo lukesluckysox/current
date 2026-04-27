@@ -48,12 +48,12 @@ function tagsForLine(line: Line): LineFilter[] {
 // from the line's own tags/mode/text without other context.
 function sourceForLine(line: Line): string {
   if (line.constellation) return 'old conversation';
-  if (line.mode === 'paradox' || line.mode === 'invert') return 'contradiction';
+  if (line.mode === 'paradox' || line.mode === 'contradiction' || line.mode === 'invert') return 'contradiction';
   if (line.terrain && /sharp|hardened|narrow|tender/i.test(line.terrain)) return 'body pressure';
   if (line.tide && /low tide|dead calm|slack water|golden hour|glass water/i.test(line.tide)) return 'quiet after release';
   if (line.tide && /storm front|building chop|heavy current|returning swell|rising swell/i.test(line.tide)) return 'fresh swell';
   if (/never|always|but|yet|still|even though|paradox/i.test(line.content)) return 'contradiction';
-  if (line.mode === 'complete' || line.mode === 'aphorism' || line.mode === 'distill') return 'returning memory';
+  if (line.mode === 'aphorism' || line.mode === 'aside' || line.mode === 'complete' || line.mode === 'distill') return 'returning memory';
   return 'unfinished thought';
 }
 
@@ -149,7 +149,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
     if (!line) return;
     navigation.navigate('Verso', {
       seedContent: line.content,
-      seedMode: 'distill',
+      seedMode: 'aphorism',
       seedLineId: line.id,
     });
   }

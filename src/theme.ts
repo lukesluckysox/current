@@ -98,13 +98,9 @@ export const VERSO_TEMPLATES = [
   'To _ is to forget that _.',
 ];
 
-// Verso · Complete is organised as: pick a *board* (a high-level posture —
-// confession, image, etc.), then choose or generate a *break* underneath it.
-// A break is a fill-in-the-blank skeleton with one or more `_` blanks the user
-// finishes. Static break banks below are used as fallbacks when the LLM is
-// unreachable; the primary path is generation. The legacy names
-// `CompleteFamily` / `COMPLETE_TEMPLATES` are kept as type aliases so existing
-// imports keep compiling.
+// Verso shaping no longer offers a "complete" / fill-in-the-blank board. The
+// CompleteBoard type and its fallback bank are kept here as legacy exports so
+// any import elsewhere still compiles, but no Verso surface uses them.
 export type CompleteBoard =
   | 'confession'
   | 'image'
@@ -114,70 +110,21 @@ export type CompleteBoard =
   | 'threshold'
   | 'return';
 
-// Legacy alias — internal type name preserved to avoid an invasive rename.
 export type CompleteFamily = CompleteBoard;
 
-export const COMPLETE_BOARDS: Array<{ id: CompleteBoard; label: string; hint: string }> = [
-  { id: 'confession',    label: 'confession',    hint: 'admit something quietly' },
-  { id: 'image',         label: 'image',         hint: 'a picture in a single line' },
-  { id: 'question',      label: 'question',      hint: 'a question you can’t answer' },
-  { id: 'memory',        label: 'memory',        hint: 'a small remembered thing' },
-  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other' },
-  { id: 'threshold',     label: 'threshold',     hint: 'just before something changes' },
-  { id: 'return',        label: 'return',        hint: 'coming back to the same place' },
-];
-
-// Legacy alias for the same array — kept for any caller still importing it.
+export const COMPLETE_BOARDS: Array<{ id: CompleteBoard; label: string; hint: string }> = [];
 export const COMPLETE_FAMILIES = COMPLETE_BOARDS;
 
-// Static fallback breaks per board. Used only when /api/generate-breaks is
-// unavailable; the primary creative engine is the LLM.
 export const COMPLETE_BREAK_FALLBACKS: Record<CompleteBoard, string[]> = {
-  confession: [
-    'I never told anyone that _ was really about _.',
-    'The truth is, I _ when no one is _.',
-    'I have spent _ pretending not to want _.',
-    'What I keep from _ is the part where _.',
-  ],
-  image: [
-    'A _ on the windowsill, and outside, _.',
-    'Light through _ makes the room feel like _.',
-    'The _ moves the way _ used to.',
-    'A small _ in the shape of _.',
-  ],
-  question: [
-    'What if _ is just _ in slower light?',
-    'How much of _ was always _?',
-    'Why does _ still taste like _?',
-    'When did _ become the thing I _?',
-  ],
-  memory: [
-    'I remember _ better than _.',
-    'The summer of _ smelled like _.',
-    'You said _ and I heard _.',
-    'There was a _, and then there wasn’t.',
-  ],
-  contradiction: [
-    '_ is just _ dressed up.',
-    'To want _ is to refuse _.',
-    'The closer I get to _, the more I miss _.',
-    '_ feels like freedom until it feels like _.',
-  ],
-  threshold: [
-    'The hour before _ is _.',
-    'Just before _, the world goes _.',
-    'On the edge of _, everything _.',
-    'The room held its breath, then _.',
-  ],
-  return: [
-    'I keep coming back to _, the way water keeps _.',
-    'Every road leads back to _ eventually.',
-    'I forget _, and then _ reminds me.',
-    'Some part of me is still _ in _.',
-  ],
+  confession: [],
+  image: [],
+  question: [],
+  memory: [],
+  contradiction: [],
+  threshold: [],
+  return: [],
 };
 
-// Legacy export name preserved for any external caller; identical contents.
 export const COMPLETE_TEMPLATES = COMPLETE_BREAK_FALLBACKS;
 
 export const PARADOX_TOPICS = [
@@ -207,28 +154,24 @@ export const TERRAIN_HINTS = [
   'hardened',
 ];
 
-// Verso shaping modes. Paradox / aphorism / contradiction are first-class
-// breaks here and are wired to LLM generation (see src/llm.ts). The local
-// fallback banks below are used when the LLM is unreachable.
+// Verso shaping modes — four first-class breaks, all wired to the LLM
+// (see src/llm.ts). The local fallback banks below are used when the LLM
+// is unreachable.
 export const VERSO_MODES = [
-  { id: 'complete',      label: 'complete',      hint: 'fill the blanks',
-    subtitle: 'finish the line' },
   { id: 'paradox',       label: 'paradox',       hint: 'a truth that undoes itself',
-    subtitle: 'two truths pulling against each other' },
+    subtitle: 'hold two incompatible truths' },
   { id: 'aphorism',      label: 'aphorism',      hint: 'a single line, sharpened',
-    subtitle: 'a truth that wants to become portable' },
-  { id: 'contradiction', label: 'contradiction', hint: 'two truths against each other',
-    subtitle: 'the split between belief and behavior' },
-  { id: 'distill',       label: 'distill',       hint: 'shorter, truer',
-    subtitle: 'cut until only the truth is left' },
-  { id: 'invert',        label: 'invert',        hint: 'flip it on its head',
-    subtitle: 'turn the line inside out' },
+    subtitle: 'compress into a hard little truth' },
+  { id: 'contradiction', label: 'contradiction', hint: 'split desire, exposed',
+    subtitle: 'the gap between belief and behavior' },
+  { id: 'aside',         label: 'aside',         hint: 'turn it sideways',
+    subtitle: 'a slanted, idiosyncratic observation with dry wit' },
 ] as const;
 export type VersoMode = typeof VERSO_MODES[number]['id'];
 
 // Local fallbacks used only when /api/generate is unreachable. Kept terse and
 // rotated by Math.random; the LLM is the primary creative engine.
-export const LOCAL_FALLBACK_LINES: Record<'aphorism' | 'paradox' | 'contradiction', string[]> = {
+export const LOCAL_FALLBACK_LINES: Record<VersoMode, string[]> = {
   aphorism: [
     'A clean room is a small argument with the future.',
     'You learn the city by the routes you keep refusing.',
@@ -249,5 +192,12 @@ export const LOCAL_FALLBACK_LINES: Record<'aphorism' | 'paradox' | 'contradictio
     'I love the city for the version of me it refuses.',
     'I save the good wine for the people who never come over.',
     'I miss the noise I spent a year escaping.',
+  ],
+  aside: [
+    'I wanted solitude with better customer service.',
+    'I miss the old me, though we were barely on speaking terms.',
+    'My discipline arrives on foot, two blocks behind the appetite.',
+    'I have a great relationship with mornings, mostly through correspondence.',
+    'Honesty looks better on me in the dark.',
   ],
 };

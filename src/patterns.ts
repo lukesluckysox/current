@@ -256,7 +256,7 @@ export function applyFeedback(
 // ─── Local break reader (rule-based, instant) ──────────────────────────────
 
 export type BreakReadResult = {
-  type: 'aphorism' | 'paradox' | 'contradiction';
+  type: 'aphorism' | 'paradox' | 'contradiction' | 'aside';
   reason: string;
   hint?: string;
 };

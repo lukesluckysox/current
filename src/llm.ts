@@ -5,7 +5,7 @@
 // the JS bundle on a different port from the API), set EXPO_PUBLIC_API_BASE
 // at build time, e.g. EXPO_PUBLIC_API_BASE=http://localhost:3000.
 
-export type GenerateBreak = 'aphorism' | 'paradox' | 'contradiction';
+export type GenerateBreak = 'aphorism' | 'paradox' | 'contradiction' | 'aside';
 export type EditOp = 'clearer' | 'sharper' | 'stranger';
 
 export type GenerateError =

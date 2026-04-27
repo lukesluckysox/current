@@ -3,11 +3,13 @@
 
 export type LineMode =
   | 'fragment'
-  | 'complete'
   | 'paradox'
-  | 'distill'
   | 'aphorism'
   | 'contradiction'
+  | 'aside'
+  // Legacy modes — kept readable, no longer produced by Verso.
+  | 'complete'
+  | 'distill'
   | 'invert';
 
 export type Line = {

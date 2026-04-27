@@ -26,11 +26,10 @@ const PAGE_SIZE = 8;
 const FILTERS: Array<{ id: 'all' | LineMode; label: string }> = [
   { id: 'all', label: 'all' },
   { id: 'fragment', label: 'fragments' },
-  { id: 'complete', label: 'completed' },
   { id: 'paradox', label: 'paradox' },
   { id: 'aphorism', label: 'aphorism' },
-  { id: 'distill', label: 'distilled' },
-  { id: 'invert', label: 'inverted' },
+  { id: 'contradiction', label: 'contradiction' },
+  { id: 'aside', label: 'aside' },
 ];
 
 function formatDate(ts: number): string {
@@ -223,11 +222,11 @@ export default function LinesScreen({ navigation, route }: Props) {
             <CurrentReadingCard
               reading={reading}
               onAction={() => {
-                // Route the recommended action: shape/distill seeds Verso with
-                // the first line of this current as material; reshape opens
-                // the oldest in this slice; otherwise open the first.
+                // Route the recommended action: shape seeds Verso with the
+                // first line of this current as material; reshape opens the
+                // oldest in this slice; otherwise open the first.
                 const a = reading.action;
-                if (a.kind === 'shape' || a.kind === 'distill') {
+                if (a.kind === 'shape') {
                   const seed = filteredLines[0];
                   if (seed) {
                     navigation.navigate('Verso', {
@@ -243,7 +242,7 @@ export default function LinesScreen({ navigation, route }: Props) {
                   if (oldest) {
                     navigation.navigate('Verso', {
                       seedContent: oldest.content,
-                      seedMode: a.mode ?? 'distill',
+                      seedMode: a.mode ?? 'aphorism',
                       seedLineId: oldest.id,
                     });
                   }

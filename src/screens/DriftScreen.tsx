@@ -147,7 +147,7 @@ export default function DriftScreen({ navigation }: Props) {
       if (content.trim()) handleSave();
       return;
     }
-    if (a.kind === 'shape' || a.kind === 'distill') {
+    if (a.kind === 'shape') {
       if (content.trim()) {
         shapeInVerso(a.mode);
       } else if (forecast.resurface) {
@@ -158,7 +158,7 @@ export default function DriftScreen({ navigation }: Props) {
     if (a.kind === 'reshape' && forecast.resurface) {
       navigation.navigate('Verso', {
         seedContent: forecast.resurface.content,
-        seedMode: a.mode ?? 'distill',
+        seedMode: a.mode ?? 'aphorism',
         seedLineId: forecast.resurface.id,
       });
       return;
@@ -167,7 +167,7 @@ export default function DriftScreen({ navigation }: Props) {
       const last = allLines[0];
       navigation.navigate('Verso', {
         seedContent: last.content,
-        seedMode: a.mode ?? 'distill',
+        seedMode: a.mode ?? 'aphorism',
         seedLineId: last.id,
       });
       return;
@@ -195,7 +195,7 @@ export default function DriftScreen({ navigation }: Props) {
     if (!surfaced) return;
     navigation.navigate('Verso', {
       seedContent: surfaced.content,
-      seedMode: 'distill',
+      seedMode: 'aphorism',
       seedLineId: surfaced.id,
     });
   }

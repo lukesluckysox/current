@@ -24,9 +24,10 @@ export type ForecastSource =
   | 'open water';
 
 export type ForecastAction = {
-  /** writing-move label, e.g. "paradox", "complete", "save raw", "resurface". */
-  kind: 'shape' | 'save' | 'resurface' | 'distill' | 'reshape';
-  /** Verso mode to seed when kind is shape/distill/reshape. */
+  /** writing-move label, e.g. "paradox", "save raw", "resurface". */
+  kind: 'shape' | 'save' | 'resurface' | 'reshape';
+  /** Verso mode to seed when kind is shape/reshape. Only the four supported
+   *  Verso modes are produced: paradox, aphorism, contradiction, aside. */
   mode?: LineMode;
   /** Short button label. */
   label: string;
@@ -186,7 +187,7 @@ function inferSource(
   if (ageHours > 36) return 'open water';
 
   if (lastLine.constellation) return 'old conversation';
-  if (lastLine.mode === 'paradox' || lastLine.mode === 'invert') return 'contradiction';
+  if (lastLine.mode === 'paradox' || lastLine.mode === 'contradiction' || lastLine.mode === 'invert') return 'contradiction';
   if (lastLine.terrain && /sharp|hardened|narrow|tender/i.test(lastLine.terrain)) {
     return 'body pressure';
   }
@@ -267,7 +268,7 @@ const PHRASE_BANK: Record<ForecastConditions, string[]> = {
   fair:     ['workable, with texture', 'small wind on the surface', 'lines come in sets'],
   building: ['heavy current under the words', 'the swell is building', 'something is gathering'],
   fading:   ['the set is letting go', 'lines stretch and loosen', 'the water is releasing'],
-  choppy:   ['building chop — hold lines short', 'wind on the page', 'distill before it slips'],
+  choppy:   ['building chop — hold lines short', 'wind on the page', 'sharpen before it slips'],
 };
 
 // ─── internal compass ────────────────────────────────────────────────────────
@@ -401,8 +402,11 @@ function inferDeepSwell(
   if (domBreak === 'paradox') { direction = 'NW'; label = 'reckoning'; }
   else if (domBreak === 'contradiction') { direction = 'NW'; label = 'reckoning'; }
   else if (domBreak === 'aphorism') { direction = 'N'; label = 'discipline'; }
-  else if (domBreak === 'distill') { direction = 'N'; label = 'distilling'; }
-  else if (domBreak === 'invert') { direction = 'W'; label = 'inverting'; }
+  else if (domBreak === 'aside') { direction = 'W'; label = 'slanting'; }
+  // Legacy modes still occasionally surface from old data — map them so the
+  // compass stays coherent without offering them as new actions.
+  else if (domBreak === 'distill') { direction = 'N'; label = 'discipline'; }
+  else if (domBreak === 'invert') { direction = 'W'; label = 'reflecting'; }
   else if (domBreak === 'complete') { direction = 'NE'; label = 'forming'; }
 
   // Top current refines it. Word currents pull south (feeling/memory);
@@ -483,19 +487,19 @@ function recommendAction(
 ): ForecastAction {
   if (hasFragment) {
     if (source === 'contradiction') {
-      return { kind: 'shape', mode: 'paradox', label: 'shape paradox →', hint: 'good for paradox' };
+      return { kind: 'shape', mode: 'contradiction', label: 'shape contradiction →', hint: 'expose the split' };
     }
     if (conditions === 'choppy' || conditions === 'fading') {
-      return { kind: 'shape', mode: 'distill', label: 'distill →', hint: 'distill before it slips' };
+      return { kind: 'shape', mode: 'aphorism', label: 'sharpen →', hint: 'compress before it slips' };
     }
     if (conditions === 'glass' || conditions === 'clean') {
-      return { kind: 'shape', mode: 'aphorism', label: 'sharpen →', hint: 'glass — sharpen to one line' };
+      return { kind: 'shape', mode: 'aphorism', label: 'sharpen →', hint: 'glass — one portable line' };
     }
     if (conditions === 'building') {
-      return { kind: 'shape', mode: 'complete', label: 'complete →', hint: 'lines are forming, finish one' };
+      return { kind: 'shape', mode: 'paradox', label: 'shape paradox →', hint: 'two truths gathering' };
     }
     if (source === 'returning memory') {
-      return { kind: 'shape', mode: 'invert', label: 'invert →', hint: 'flip the memory' };
+      return { kind: 'shape', mode: 'aside', label: 'turn it sideways →', hint: 'an aside on what keeps returning' };
     }
     return { kind: 'save', label: 'save raw', hint: 'keep it as a fragment' };
   }
@@ -507,7 +511,7 @@ function recommendAction(
   if (lastLine && lastLine.mode === 'fragment') {
     return {
       kind: 'reshape',
-      mode: 'distill',
+      mode: 'aphorism',
       label: 'reshape last →',
       hint: 'last fragment unfinished',
     };
@@ -962,18 +966,22 @@ export function readCurrent(
 
   const description = parts.join(' · ');
 
-  // Action: choppy/restless → distill; quiet/old → reshape; otherwise open.
+  // Action: choppy/restless → sharpen; quiet/old → reshape; otherwise open.
   let action: ForecastAction;
   if (filterKind === 'tide' && /storm front|building chop|heavy current/i.test(filterValue)) {
-    action = { kind: 'shape', mode: 'distill', label: 'distill this current →', hint: 'shorten before it slips' };
+    action = { kind: 'shape', mode: 'aphorism', label: 'sharpen this current →', hint: 'compress before it slips' };
   } else if (filterKind === 'terrain' && /sharp|hardened|restless/i.test(filterValue)) {
     action = { kind: 'shape', mode: 'aphorism', label: 'sharpen one →', hint: 'one line, sharpened' };
   } else if (ageDays > 7) {
-    action = { kind: 'reshape', mode: 'distill', label: 'reshape oldest →', hint: 'pull a line up from below' };
+    action = { kind: 'reshape', mode: 'aphorism', label: 'reshape oldest →', hint: 'pull a line up from below' };
   } else if (topModes[0]?.key === 'paradox') {
     action = { kind: 'shape', mode: 'paradox', label: 'paradox again →', hint: 'this current runs paradox' };
+  } else if (topModes[0]?.key === 'contradiction') {
+    action = { kind: 'shape', mode: 'contradiction', label: 'name the split →', hint: 'this current runs contradiction' };
+  } else if (topModes[0]?.key === 'aside') {
+    action = { kind: 'shape', mode: 'aside', label: 'another aside →', hint: 'this current runs slanted' };
   } else {
-    action = { kind: 'reshape', mode: 'complete', label: 'extend this current →', hint: 'finish one of these' };
+    action = { kind: 'reshape', mode: 'aside', label: 'turn this sideways →', hint: 'try an aside on this current' };
   }
 
   return { title, description, topModes, coTag, action };

@@ -9,11 +9,14 @@ import * as SQLite from 'expo-sqlite';
 
 export type LineMode =
   | 'fragment'        // raw drift capture
-  | 'complete'        // verso fill-in-the-blank
   | 'paradox'         // verso paradox mode
-  | 'distill'         // verso distill mode
   | 'aphorism'        // verso aphorism mode
-  | 'contradiction'   // verso contradiction mode (LLM-backed)
+  | 'contradiction'   // verso contradiction mode
+  | 'aside'           // verso aside mode — slanted, idiosyncratic wit
+  // Legacy modes — no longer offered for new shaping, but preserved on
+  // existing rows so old lines remain readable in Lines/LineDetail.
+  | 'complete'
+  | 'distill'
   | 'invert';
 
 export type Line = {

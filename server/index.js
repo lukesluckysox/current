@@ -27,7 +27,7 @@ const MAX_LINE_LEN = 220;
 const MAX_OUTPUT_TOKENS = 120;
 const REQUEST_TIMEOUT_MS = 8000;
 
-const VALID_TYPES = new Set(['aphorism', 'paradox', 'contradiction']);
+const VALID_TYPES = new Set(['aphorism', 'paradox', 'contradiction', 'aside']);
 const VALID_EDIT_OPS = new Set(['clearer', 'sharper', 'stranger']);
 const VALID_BOARDS = new Set([
   'confession', 'image', 'question', 'memory',
@@ -108,7 +108,7 @@ function contextBlock(ctx) {
     const c = ctx.currents.filter((w) => typeof w === 'string').slice(0, 4).map((w) => w.trim().toLowerCase().slice(0, 32)).filter(Boolean);
     if (c.length) parts.push(`returning currents: ${c.join(' · ')}`);
   }
-  if (typeof ctx.dominantBreak === 'string' && /^(aphorism|paradox|contradiction|fragment|complete|distill|invert)$/.test(ctx.dominantBreak)) {
+  if (typeof ctx.dominantBreak === 'string' && /^(aphorism|paradox|contradiction|aside|fragment|complete|distill|invert)$/.test(ctx.dominantBreak)) {
     parts.push(`recent break: ${ctx.dominantBreak}`);
   }
   if (Array.isArray(ctx.styleHints) && ctx.styleHints.length) {
@@ -155,6 +155,17 @@ function userPrompt(type, seed, ctx) {
         'Shape: concrete subject (often "I" or a small named role) and a small, observable behavior. The behavior is the punchline; do not explain it. Specificity over generality.',
         'Test: if the line preaches, cut it. If it could apply to "everyone", make the subject more specific. The reader should feel caught, not lectured. Strip any therapy or self-help vocabulary.',
         'Forbidden here: "but they say", "everyone wants X but nobody Y", finger-wagging, irony quotes, therapy vocabulary ("trauma", "boundaries", "authenticity", "showing up").',
+        ctxClause,
+        seedClause,
+      ].join(' ');
+    case 'aside':
+      return [
+        'Write one aside.',
+        'Contract: a compact, slanted observation delivered with dry wit, mischief, or an idiosyncratic turn. The line tilts a familiar idea a few degrees off-axis so the reader catches its shape from the side. The wit comes from precision and tone, not from a punchline.',
+        'Shape: usually first-person, declarative, lightly self-aware. One small concrete object, ritual, role, or transaction in the line. The slant lives in an unexpected pairing — pairing solitude with customer service, ambition with paperwork, grief with logistics, loyalty with refunds.',
+        'Aim at this register, by example: "I wanted solitude with better customer service." / "I miss the old me, though we were barely on speaking terms."',
+        'Test: if the line reads like a stand-up punchline, an internet sarcasm post, a motivational quote, therapy-speak, or a direct Groucho Marx imitation, rewrite it. If a stranger could not tell whether the speaker was kidding or not, you are close. Keep the wit dry; never wink.',
+        'Forbidden here: setup-and-punchline jokes, observational-comedy cadence, "anyone else", "why is it that", emoji-flavored irony, motivational phrasing ("the trick is", "the secret is"), therapy vocabulary ("trauma", "boundaries", "authenticity", "showing up"), explicit Groucho impressions ("I would never join…"), rhetorical questions, exclamations.',
         ctxClause,
         seedClause,
       ].join(' ');

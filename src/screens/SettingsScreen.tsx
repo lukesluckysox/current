@@ -157,15 +157,14 @@ export default function SettingsScreen({ navigation }: Props) {
             a line, and keeping the ones worth keeping.
           </Text>
           <Text style={styles.aboutText}>
-            Drift catches the raw thing. Verso shapes it — completing,
-            distilling, inverting, or turning it into a paradox. Tide, terrain,
-            and constellation are light tags you can add to any line.
+            Drift catches the raw thing. Verso shapes it — paradox, aphorism,
+            contradiction, or aside. Tide, terrain, and constellation are light
+            tags you can add to any line.
           </Text>
           <Text style={styles.aboutText}>
-            On-device AI generation has been removed in this version: it
-            previously required exposing an API key client-side, which is not
-            safe. Manual shaping (paradox, distill, aphorism, invert) is fully
-            available.
+            Generation runs server-side so your Anthropic key is never exposed
+            to the client. Manual shaping (paradox, aphorism, contradiction,
+            aside) is fully available offline against a small local fallback.
           </Text>
           <Text style={styles.version}>v1.2 — depth stack</Text>
         </View>
