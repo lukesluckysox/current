@@ -82,6 +82,7 @@ export default function LoginScreen({ mode: initialMode, canRegister, onAuthed }
     >
       <View style={styles.center}>
         <Text style={styles.brand}>Current</Text>
+        <Text style={styles.hero}>Read what’s moving underneath.</Text>
         <Text style={styles.heading}>{heading}</Text>
 
         <View style={styles.form}>
@@ -147,9 +148,6 @@ export default function LoginScreen({ mode: initialMode, canRegister, onAuthed }
           ) : null}
         </View>
 
-        <Text style={styles.footnote}>
-          your saved lines stay on this device. sign-in only protects access.
-        </Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -175,6 +173,14 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     textAlign: 'center',
     marginBottom: Spacing.xs,
+  },
+  hero: {
+    color: Colors.sandLight,
+    fontSize: FontSizes.md,
+    fontFamily: Fonts.serifRegular,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    fontStyle: 'italic',
   },
   heading: {
     color: Colors.sand,
@@ -242,15 +248,5 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontFamily: Fonts.sans as string,
     textTransform: 'lowercase',
-  },
-  footnote: {
-    position: 'absolute',
-    bottom: Spacing.xl,
-    left: Spacing.lg,
-    right: Spacing.lg,
-    color: Colors.muted,
-    fontSize: FontSizes.xs,
-    fontFamily: Fonts.sans as string,
-    textAlign: 'center',
   },
 });
