@@ -232,7 +232,7 @@ export async function exportAllData(): Promise<string> {
   const fmt = (ts: number) =>
     new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
-  let out = `SWELL — Export ${new Date().toLocaleDateString()}\n\n`;
+  let out = `CURRENT — Export ${new Date().toLocaleDateString()}\n\n`;
   out += `=== LINES ===\n`;
   for (const l of lines) {
     const tags: string[] = [];

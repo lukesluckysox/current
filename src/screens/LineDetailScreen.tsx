@@ -329,7 +329,7 @@ function renderLineToImageWeb(line: Line): boolean {
     // Footer mark
     ctx.fillStyle = Colors.muted;
     ctx.font = '400 24px sans-serif';
-    ctx.fillText('SWELL', 80, H - 110);
+    ctx.fillText('CURRENT', 80, H - 110);
     ctx.fillStyle = Colors.mutedLight;
     ctx.font = 'italic 22px serif';
     ctx.fillText(line.mode, 80, H - 70);
@@ -337,7 +337,7 @@ function renderLineToImageWeb(line: Line): boolean {
     const dataUrl = canvas.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = dataUrl;
-    a.download = `swell-line-${line.id}.png`;
+    a.download = `current-line-${line.id}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

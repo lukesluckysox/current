@@ -1,4 +1,4 @@
-// Minimal Node/Express API for Swell.
+// Minimal Node/Express API for Current.
 // - Serves the Expo static web export from /dist with SPA fallback.
 // - Exposes POST /api/generate which calls Anthropic for aphorism / paradox /
 //   contradiction generation, /api/edit for clearer/sharper/stranger rewrites,
@@ -61,7 +61,7 @@ function rateLimit(req, res, next) {
 
 function systemPrompt() {
   return [
-    'You write a single short line for a creative writing instrument called Swell.',
+    'You write a single short line for a creative writing instrument called Current.',
     'Voice: terse, image-led, contemporary, exact. Strong verbs, concrete nouns, specific particulars over abstractions.',
     'Pursue ingenuity: prefer the angle a careful writer would choose on the third try, not the first. Surprise without straining.',
     'Pressure point: find the contradiction, the avoided admission, the hidden bargain, the almost-said thing, the gap between tone and content. Generate from that pressure, not from the surface topic.',
@@ -398,5 +398,5 @@ app.get('*', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Swell server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL})`);
+  console.log(`Current server listening on :${PORT} (llm=${Boolean(client)}, model=${MODEL})`);
 });

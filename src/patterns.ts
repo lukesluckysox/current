@@ -1,4 +1,4 @@
-// Pattern memory for Swell.
+// Pattern memory for Current.
 //
 // Lightweight, pure functions over the user's saved Lines (and the active
 // fragment) that detect recurring themes, words, and break runs. The output

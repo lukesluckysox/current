@@ -77,7 +77,7 @@ export default function App() {
     return (
       <View style={styles.splash}>
         <StatusBar barStyle="light-content" />
-        <Text style={styles.splashName}>Swell</Text>
+        <Text style={styles.splashName}>Current</Text>
         {dbError && <Text style={styles.splashError}>{dbError}</Text>}
       </View>
     );

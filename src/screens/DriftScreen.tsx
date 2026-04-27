@@ -161,7 +161,7 @@ export default function DriftScreen({ navigation }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Header
-        title="Swell"
+        title="Current"
         rightAction={
           <TouchableOpacity
             onPress={() => navigation.navigate('Lines')}

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Swell",
-    "slug": "swell",
+    "name": "Current",
+    "slug": "current",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -27,8 +27,8 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "output": "single",
-      "name": "Swell",
-      "shortName": "Swell",
+      "name": "Current",
+      "shortName": "Current",
       "description": "A pocket creative instrument for turning passing states into lines worth keeping.",
       "backgroundColor": "#0A1628",
       "themeColor": "#0A1628",

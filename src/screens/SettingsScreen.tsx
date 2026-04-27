@@ -22,7 +22,7 @@ export default function SettingsScreen({ navigation }: Props) {
   async function handleExport() {
     const data = await exportAllData();
     try {
-      await Share.share({ message: data, title: 'Swell Export' });
+      await Share.share({ message: data, title: 'Current Export' });
     } catch {}
   }
 
@@ -73,9 +73,9 @@ export default function SettingsScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>about swell</Text>
+          <Text style={styles.sectionLabel}>about current</Text>
           <Text style={styles.aboutText}>
-            Swell is a pocket creative instrument for catching a fragment, shaping
+            Current is a pocket creative instrument for catching a fragment, shaping
             a line, and keeping the ones worth keeping.
           </Text>
           <Text style={styles.aboutText}>

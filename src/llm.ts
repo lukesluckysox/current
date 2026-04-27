@@ -1,4 +1,4 @@
-// Thin client wrapper around the Swell server API.
+// Thin client wrapper around the Current server API.
 //
 // In production the Expo web bundle is served by the same Node process that
 // owns /api, so a relative path works. For local Expo dev (where Metro serves

@@ -2,7 +2,7 @@ import * as SQLite from 'expo-sqlite';
 
 // ─── Unified Line model ──────────────────────────────────────────────────────
 //
-// Swell's primary persisted artifact is a saved *line*. A line begins as a
+// Current's primary persisted artifact is a saved *line*. A line begins as a
 // fragment (Drift) and can be optionally tagged with light context — a tide
 // state, a terrain hint, a constellation tie — and may be shaped through
 // Verso (which now contains the former Paradox tool as a mode).
@@ -335,7 +335,7 @@ export async function exportAllData(): Promise<string> {
   const fmt = (ts: number) =>
     new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
-  let out = `SWELL — Export ${new Date().toLocaleDateString()}\n\n`;
+  let out = `CURRENT — Export ${new Date().toLocaleDateString()}\n\n`;
   out += `=== LINES ===\n`;
   for (const l of lines) {
     const tags: string[] = [];
