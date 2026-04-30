@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Colors, Fonts, FontSizes, Spacing, Radius,
-  TIDE_STATES, TERRAIN_HINTS,
+  TIDE_STATES, TERRAIN_HINTS, registerStyleRebuilder, 
 } from '../theme';
 import {
   addLine, getLines, Line,
@@ -523,7 +523,7 @@ function ConstellationSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -764,3 +764,5 @@ const styles = StyleSheet.create({
     height: 32,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

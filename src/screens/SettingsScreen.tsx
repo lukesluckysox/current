@@ -10,7 +10,7 @@ import {
 import { confirm, notify } from '../confirm';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import {
   exportAllData,
   clearAllData,
@@ -183,7 +183,7 @@ export default function SettingsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -253,3 +253,5 @@ const styles = StyleSheet.create({
     height: 48,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

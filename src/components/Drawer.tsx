@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import { useTheme } from '../ThemeContext';
 import { useAuth } from '../AuthContext';
 import { RootStackParamList } from '../../App';
@@ -173,7 +173,7 @@ export function Drawer({ visible, onClose }: DrawerProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   scrim: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -263,3 +263,5 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.md,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

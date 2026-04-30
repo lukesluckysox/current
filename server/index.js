@@ -119,26 +119,20 @@ function contextBlock(ctx) {
   return `\nContext (silent — do not name, quote, or list these): ${parts.join(' · ')}.`;
 }
 
-// intent: how the seed should be used.
-//   'seed'    — hold the fragment underneath; the new line is inspired by it,
-//              not derived from it. Voice and territory carry over; the
-//              fragment itself does not appear on the line.
-//   'reshape' — convert the user's own words into the requested form.
-//              Their meaning is the raw material; the line should clearly be
-//              about the same thing they wrote, recast into the contract of
-//              the chosen mode.
-function userPrompt(type, seed, ctx, intent = 'seed') {
+// userPrompt: behavior is determined entirely by whether the speaker typed
+// something into the canvas.
+//   empty seed — generate a fresh line in the chosen mode using the
+//                context (tide / terrain / voice) as quiet ground.
+//   has seed  — twist the speaker's own words into the chosen mode. Same
+//                meaning, same subject, recast into the form. Borrow their
+//                concrete nouns when they sharpen the line.
+function userPrompt(type, seed, ctx) {
   const trimmed = (seed || '').trim().slice(0, MAX_SEED_LEN);
   const hasSeed = trimmed.length > 0;
   const ctxClause = contextBlock(ctx);
-  let seedClause;
-  if (!hasSeed) {
-    seedClause = '\nNo seed was provided. Use the context (if any) and a small concrete anchor — kitchen, weather, transit, body, tool, room. Do not address or assume anything about the reader.';
-  } else if (intent === 'reshape') {
-    seedClause = `\nReshape the speaker's own words into the contract above. Keep their meaning, their subject, the specific thing they were pointing at. Change the form. The new line should clearly be about the same thing the fragment is about — not a tangent, not a related idea, the same idea recast. You may borrow concrete nouns from the fragment when they sharpen the line; otherwise prefer fresh, more specific images. Do not quote the fragment verbatim. Do not add a new topic.\n\nFragment to reshape:\n${trimmed}`;
-  } else {
-    seedClause = `\nHold this fragment in mind without quoting, naming, or paraphrasing it directly — let it sit underneath the line: ${trimmed}`;
-  }
+  const seedClause = !hasSeed
+    ? '\nNo seed was provided. Use the context (if any) and a small concrete anchor — kitchen, weather, transit, body, tool, room. Do not address or assume anything about the reader.'
+    : `\nTwist the speaker's own words into the contract above. Keep their meaning, their subject, the specific thing they were pointing at. Change the form. The new line should clearly be about the same thing the fragment is about — not a tangent, not a related idea, the same idea recast. You may borrow concrete nouns from the fragment when they sharpen the line; otherwise prefer fresh, more specific images. Do not quote the fragment verbatim. Do not add a new topic.\n\nFragment to twist:\n${trimmed}`;
 
   switch (type) {
     case 'aphorism':
@@ -187,7 +181,6 @@ function userPrompt(type, seed, ctx, intent = 'seed') {
   }
 }
 
-const VALID_INTENTS = new Set(['seed', 'reshape']);
 
 // Mode-aware micro-instructions appended to each edit op. The user-visible
 // label (clearer / sharper / stranger) stays the same, but the model is
@@ -442,18 +435,12 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
   const type = String(body.type || '').toLowerCase();
   const seed = typeof body.seed === 'string' ? body.seed : '';
   const ctx = body.context && typeof body.context === 'object' ? body.context : null;
-  // Intent governs how the seed is used: 'seed' (the default, current
-  // behavior — inspired by) vs 'reshape' (convert the user's own words into
-  // the requested mode). Falls back to 'seed' if the seed is empty.
-  const requestedIntent = String(body.intent || 'seed').toLowerCase();
-  const intent = VALID_INTENTS.has(requestedIntent) ? requestedIntent : 'seed';
   if (!VALID_TYPES.has(type)) return res.status(400).json({ error: 'invalid_type' });
   if (seed.length > MAX_SEED_LEN) return res.status(400).json({ error: 'seed_too_long' });
-  const effectiveIntent = seed.trim().length > 0 ? intent : 'seed';
 
   try {
     let line = await complete(
-      [{ role: 'user', content: userPrompt(type, seed, ctx, effectiveIntent) }],
+      [{ role: 'user', content: userPrompt(type, seed, ctx) }],
     );
     // Anti-cliché: if the first pass smells generic, regenerate once with a
     // sharper instruction. Single retry — keeps latency bounded.
@@ -463,7 +450,7 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
           [{
             role: 'user',
             content:
-              userPrompt(type, seed, ctx, effectiveIntent) +
+              userPrompt(type, seed, ctx) +
               '\nThe previous attempt was too generic, motivational, or therapy-flavored. Rewrite from the pressure point: the contradiction, the avoided admission, or the almost-said thing. Specific noun, specific verb. No "remember", "embrace", "journey", "trauma", "boundaries".',
           }],
         );
@@ -472,7 +459,7 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
       }
     }
     if (!line) return res.status(502).json({ error: 'empty_response' });
-    return res.json({ line, type, seeded: seed.trim().length > 0, intent: effectiveIntent });
+    return res.json({ line, type, seeded: seed.trim().length > 0 });
   } catch (err) {
     const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
     console.warn(`[generate] type=${type} status=${status} err=${err?.name || 'unknown'}`);

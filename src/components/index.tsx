@@ -13,7 +13,7 @@ import {
   TextStyle,
   useWindowDimensions,
 } from 'react-native';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 
 export { Drawer } from './Drawer';
 
@@ -74,13 +74,14 @@ export function Workbench({ children, size = 'normal', style }: WorkbenchProps) 
   );
 }
 
-const workbenchStyles = StyleSheet.create({
+const build_workbenchStyles = () => StyleSheet.create({
   frame: {
     width: '100%',
     alignSelf: 'center',
   },
 });
-
+const workbenchStyles = build_workbenchStyles();
+registerStyleRebuilder(() => Object.assign(workbenchStyles, build_workbenchStyles()));
 // ─── Card ────────────────────────────────────────────────────────────────────
 
 type CardProps = {
@@ -649,7 +650,7 @@ export function CurrentReadingCard({ reading, onAction, testID }: CurrentReading
   );
 }
 
-const currentStyles = StyleSheet.create({
+const build_currentStyles = () => StyleSheet.create({
   container: {
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.sm,
@@ -719,12 +720,13 @@ const currentStyles = StyleSheet.create({
     letterSpacing: 1,
   },
 });
-
+const currentStyles = build_currentStyles();
+registerStyleRebuilder(() => Object.assign(currentStyles, build_currentStyles()));
 // Backward-compatible alias for any older imports.
 // (kept intentionally — older callers may reference TidalReading)
 export const TidalReading = WaveForecast as unknown as React.FC<any>;
 
-const waveStyles = StyleSheet.create({
+const build_waveStyles = () => StyleSheet.create({
   container: {
     marginHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
@@ -1052,8 +1054,9 @@ const waveStyles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 });
-
-const infoStyles = StyleSheet.create({
+const waveStyles = build_waveStyles();
+registerStyleRebuilder(() => Object.assign(waveStyles, build_waveStyles()));
+const build_infoStyles = () => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: '#00000099',
@@ -1149,7 +1152,8 @@ const infoStyles = StyleSheet.create({
     letterSpacing: 1,
   },
 });
-
+const infoStyles = build_infoStyles();
+registerStyleRebuilder(() => Object.assign(infoStyles, build_infoStyles()));
 // ─── TidalChart ──────────────────────────────────────────────────────────────
 //
 // A simple tide line for Lines/Depth Stack. One curve, one "now" dot —
@@ -1209,7 +1213,7 @@ export function TidalChart({ totalCount, phaseHint, testID }: TidalChartProps) {
   );
 }
 
-const chartStyles = StyleSheet.create({
+const build_chartStyles = () => StyleSheet.create({
   container: {
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
@@ -1265,10 +1269,11 @@ const chartStyles = StyleSheet.create({
     fontSize: FontSizes.sm,
   },
 });
-
+const chartStyles = build_chartStyles();
+registerStyleRebuilder(() => Object.assign(chartStyles, build_chartStyles()));
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
     borderRadius: Radius.md,
@@ -1419,3 +1424,5 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.md,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

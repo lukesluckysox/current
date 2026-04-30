@@ -11,7 +11,7 @@ import {
 import { confirm } from '../confirm';
 import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import {
   getLineById,
   deleteLine,
@@ -352,7 +352,7 @@ function renderLineToImageWeb(line: Line): boolean {
   }
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -475,3 +475,5 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

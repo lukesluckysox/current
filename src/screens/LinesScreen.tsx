@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import { getLines, deleteLine, Line, LineMode } from '../db/database';
 import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard, Workbench, Drawer } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
@@ -405,7 +405,7 @@ function LineRow({
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -587,3 +587,5 @@ const styles = StyleSheet.create({
     height: 48,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

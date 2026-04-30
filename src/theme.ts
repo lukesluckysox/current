@@ -89,12 +89,34 @@ export function getColorScheme(): ColorScheme {
   return activeScheme;
 }
 
+// ─── Style rebuilders ────────────────────────────────────────────────────────
+//
+// Module-level `const styles = StyleSheet.create({...})` outputs are evaluated
+// once at import time and freeze whatever `Colors.X` values were live then.
+// Each style module registers a rebuilder here; when the scheme flips we call
+// every rebuilder so the same `styles` object is mutated in place to point at
+// freshly-created class ids backed by the new palette. Combined with the
+// AppNavigator `key={scheme}` remount in App.tsx, every screen re-reads its
+// styles against the new theme on the next render.
+
+type StyleRebuilder = () => void;
+const styleRebuilders: StyleRebuilder[] = [];
+
+export function registerStyleRebuilder(fn: StyleRebuilder): void {
+  styleRebuilders.push(fn);
+}
+
 export function setColorScheme(scheme: ColorScheme): void {
   const next = scheme === 'light' ? lightPalette : darkPalette;
   (Object.keys(next) as Array<keyof Palette>).forEach((k) => {
     Colors[k] = next[k];
   });
   activeScheme = scheme;
+  // Rebuild every registered stylesheet against the new palette. Errors in
+  // any one rebuilder are isolated so a bad screen can't break the toggle.
+  for (const fn of styleRebuilders) {
+    try { fn(); } catch { /* ignore — best effort */ }
+  }
 }
 
 export const Fonts = {

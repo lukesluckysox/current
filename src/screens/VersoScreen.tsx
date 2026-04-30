@@ -14,14 +14,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Colors, Fonts, FontSizes, Spacing, Radius,
   VERSO_MODES, VersoMode, PARADOX_TOPICS,
-  LOCAL_FALLBACK_LINES,
+  LOCAL_FALLBACK_LINES, registerStyleRebuilder, 
 } from '../theme';
 import {
   addLine, getLines, getConfig, setConfig, Line,
 } from '../db/database';
 import { Header, Pill, Workbench, Drawer } from '../components';
 import { RootStackParamList } from '../../App';
-import { generateLine, GenerateBreak, EditOp, editLine, GenerateIntent } from '../llm';
+import { generateLine, GenerateBreak, EditOp, editLine } from '../llm';
 import {
   buildLexicon, findCurrents, dominantBreak,
   readBreakLocal, restraint as readRestraint,
@@ -84,12 +84,12 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [mode, setMode] = useState<VersoMode>(initialMode);
 
   // Free-text shaping canvas. Same UI for all four modes.
+  //
+  // Behavior of "take the drop":
+  //   canvas empty  — LLM writes a fresh line in the chosen mode (inspire).
+  //   canvas filled — LLM twists the speaker's own words into the mode.
+  // No toggle; the canvas presence is the signal.
   const [shaped, setShaped] = useState(seedContent ?? '');
-  // How the canvas should be used when the speaker takes the drop.
-  //   'seed'    — hold their words underneath; line is inspired by them.
-  //   'reshape' — convert their words into the chosen mode.
-  // Only meaningful when the canvas has content; the toggle hides otherwise.
-  const [intent, setIntent] = useState<GenerateIntent>('seed');
   const [menuOpen, setMenuOpen] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState('');
@@ -202,13 +202,8 @@ export default function VersoScreen({ navigation, route }: Props) {
     // topic, then any nav-time seed. A single word/topic/fragment is enough.
     const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
     const previous = shaped;
-    // Reshape only applies when the canvas itself holds the seed. If the seed
-    // came from a topic chip or nav-time fragment (not currently in the box),
-    // fall back to 'seed' so the user's own words aren't silently rewritten.
-    const effectiveIntent: GenerateIntent =
-      intent === 'reshape' && shaped.trim().length > 0 ? 'reshape' : 'seed';
     try {
-      const result = await generateLine(mode, seed, contextPacket, effectiveIntent);
+      const result = await generateLine(mode, seed, contextPacket);
       if (result.ok) {
         setShaped(result.line);
       } else {
@@ -395,23 +390,6 @@ export default function VersoScreen({ navigation, route }: Props) {
               </Text>
             </TouchableOpacity>
           </View>
-          {shaped.trim().length > 0 && (
-            <View style={styles.intentRow} testID={`intent-row-${mode}`}>
-              <Text style={styles.intentHint}>your words →</Text>
-              <View style={styles.intentPills}>
-                <Pill
-                  label="seed"
-                  active={intent === 'seed'}
-                  onPress={() => setIntent('seed')}
-                />
-                <Pill
-                  label="reshape"
-                  active={intent === 'reshape'}
-                  onPress={() => setIntent('reshape')}
-                />
-              </View>
-            </View>
-          )}
           {generateError && (
             <Text style={styles.generateError}>{generateError}</Text>
           )}
@@ -519,7 +497,7 @@ export default function VersoScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -632,23 +610,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
-  },
-  intentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: Spacing.sm,
-  },
-  intentHint: {
-    color: Colors.muted,
-    fontFamily: Fonts.sans,
-    fontSize: FontSizes.xs,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginRight: Spacing.sm,
-  },
-  intentPills: {
-    flexDirection: 'row',
   },
   generateError: {
     color: Colors.muted,
@@ -798,3 +759,5 @@ const styles = StyleSheet.create({
     color: Colors.sandLight,
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

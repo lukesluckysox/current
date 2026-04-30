@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import { Header, SwellInput, Workbench, useIsDesktop, Drawer } from '../components';
 import { addLine, getLines, Line } from '../db/database';
 import { generateAnchor, AnchorPull } from '../llm';
@@ -294,7 +294,7 @@ function labelFor(pull: Pull): string {
   return PULLS.find((p) => p.id === pull)?.label ?? '';
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.deepNavy },
   scroll: { flex: 1 },
   body: { padding: Spacing.lg },
@@ -446,3 +446,5 @@ const styles = StyleSheet.create({
   },
   bottomPad: { height: 64 },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));

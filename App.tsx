@@ -10,7 +10,7 @@ import {
   CormorantGaramond_600SemiBold,
   CormorantGaramond_700Bold,
 } from '@expo-google-fonts/cormorant-garamond';
-import { Colors, Fonts } from './src/theme';
+import { Colors, Fonts, registerStyleRebuilder } from './src/theme';
 import { initDatabase } from './src/db/database';
 import { AuthProvider, useAuth } from './src/AuthContext';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
@@ -181,7 +181,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const buildStyles = () => StyleSheet.create({
   splash: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -209,3 +209,5 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
 });
+const styles = buildStyles();
+registerStyleRebuilder(() => Object.assign(styles, buildStyles()));

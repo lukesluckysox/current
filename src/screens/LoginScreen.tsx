@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
+import { Colors, Fonts, FontSizes, Spacing, Radius, registerStyleRebuilder } from '../theme';
 import { login, register, AuthError, AuthUser } from '../auth';
 
 type Props = {
@@ -153,7 +153,7 @@ export default function LoginScreen({ mode: initialMode, canRegister, onAuthed }
   );
 }
 
-const styles = StyleSheet.create({
+const build_styles = () => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
@@ -250,3 +250,5 @@ const styles = StyleSheet.create({
     textTransform: 'lowercase',
   },
 });
+const styles = build_styles();
+registerStyleRebuilder(() => Object.assign(styles, build_styles()));
