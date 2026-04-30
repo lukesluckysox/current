@@ -513,6 +513,74 @@ app.post('/api/generate-breaks', maybeRequireAuth, rateLimit, async (req, res) =
   }
 });
 
+// ─── /api/anchor ─────────────────────────────────────────────────────────────
+//
+// Stillwater grounding. Returns one short anchor line for a speaker who feels
+// pulled — either toward compliance ("being pulled under"), toward defiant
+// rebellion ("kicking against the current"), or just trying to hold the line.
+// Reuses the same client, sanitize(), and cliché filter as /api/generate; the
+// only thing that differs is the prompt contract.
+
+const VALID_PULLS = new Set(['under', 'holding', 'against']);
+const PULL_DESCRIPTIONS = {
+  under:    'being pulled under — absorbing the room, performing fluency, agreeing in advance, losing the thread of who they were before they walked in',
+  holding:  'holding the line — trying to stay porous to real things and closed to manufactured ones',
+  against:  'kicking against the current — still inside the argument, still feeding what they reject by refusing it loudly',
+};
+
+function anchorPrompt(pull, custom) {
+  const trimmed = (custom || '').trim().slice(0, MAX_SEED_LEN);
+  const hasCustom = trimmed.length > 0;
+  const pullClause = `The speaker is ${PULL_DESCRIPTIONS[pull] || PULL_DESCRIPTIONS.holding}.`;
+  const customClause = hasCustom
+    ? `\nWhat is pulling at them, in their own words — hold this without quoting or paraphrasing: ${trimmed}`
+    : '\nNo specifics were given. Stay general but particular: a small concrete detail (room, weather, body, tool, hour) carries the line.';
+  return [
+    'Write one anchor line.',
+    'Contract: a quiet grounding statement for someone who is calibrating between two failure modes — absorbing the room or rebelling against it. Not advice. Not a reassurance. A line that lets the speaker step out of the pull without resolving it for them.',
+    'Voice: settled, dry, lightly wry, never preachy. A trusted friend who also sees clearly. Concrete. First or second person both fine; second-person commands forbidden.',
+    'Shape: one line, under 18 words, declarative or observational. No exclamations. No rhetorical questions. No motivational cadence. No therapy vocabulary. No "remember", "embrace", "journey", "warrior", "trauma", "boundaries", "showing up", "authenticity".',
+    'Test: if it could appear on a self-help poster, rewrite it. If it tells the speaker how to feel, rewrite it. If it sounds like meditation-app copy, rewrite it. The line should feel overheard, not announced.',
+    pullClause,
+    customClause,
+  ].join(' ');
+}
+
+app.post('/api/anchor', maybeRequireAuth, rateLimit, async (req, res) => {
+  if (!client) return res.status(503).json({ error: 'llm_unavailable' });
+  const body = req.body || {};
+  const pull = String(body.pull || 'holding').toLowerCase();
+  const custom = typeof body.custom === 'string' ? body.custom : '';
+  if (!VALID_PULLS.has(pull)) return res.status(400).json({ error: 'invalid_pull' });
+  if (custom.length > MAX_SEED_LEN) return res.status(400).json({ error: 'custom_too_long' });
+
+  try {
+    let line = await complete(
+      [{ role: 'user', content: anchorPrompt(pull, custom) }],
+    );
+    if (line && isCliche(line)) {
+      try {
+        line = await complete(
+          [{
+            role: 'user',
+            content:
+              anchorPrompt(pull, custom) +
+              '\nThe previous attempt was too generic, motivational, or therapy-flavored. Rewrite drier and more specific. One concrete detail. No "remember", "embrace", "journey", "trauma", "boundaries".',
+          }],
+        );
+      } catch {
+        // keep the first line if retry fails
+      }
+    }
+    if (!line) return res.status(502).json({ error: 'empty_response' });
+    return res.json({ line, pull });
+  } catch (err) {
+    const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
+    console.warn(`[anchor] pull=${pull} status=${status} err=${err?.name || 'unknown'}`);
+    return res.status(status === 504 ? 504 : 502).json({ error: 'generation_failed' });
+  }
+});
+
 // ─── /api/why-break ──────────────────────────────────────────────────────────
 //
 // Recommend the strongest break for a fragment, plus a one-sentence reason.

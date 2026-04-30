@@ -7,6 +7,7 @@ export type LineMode =
   | 'aphorism'
   | 'contradiction'
   | 'aside'
+  | 'anchor'          // stillwater anchor — a grounding line for a moment of pull
   // Legacy modes — kept readable, no longer produced by Verso.
   | 'complete'
   | 'distill'

@@ -124,6 +124,29 @@ export async function generateBreaks(
   return { ok: true, breaks };
 }
 
+// ─── Stillwater anchor ──────────────────────────────────────────────────────
+//
+// One short grounding line for a speaker who feels pulled. Three pull states:
+//   'under'    — being pulled under (absorbing the room, agreeing in advance)
+//   'holding'  — trying to hold the line
+//   'against'  — kicking against the current (still feeding what they reject)
+
+export type AnchorPull = 'under' | 'holding' | 'against';
+
+export async function generateAnchor(
+  pull: AnchorPull,
+  custom?: string,
+): Promise<{ ok: true; line: string } | { ok: false; error: GenerateError }> {
+  const result = await call<{ line?: string }>('/api/anchor', {
+    pull,
+    custom: custom?.slice(0, 280) ?? '',
+  });
+  if (!result.ok) return result;
+  const line = (result.data.line || '').trim();
+  if (!line) return { ok: false, error: { kind: 'empty' } };
+  return { ok: true, line };
+}
+
 export type WhyBreakResult = {
   type: GenerateBreak;
   reason: string;

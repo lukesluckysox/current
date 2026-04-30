@@ -431,6 +431,12 @@ export default function DriftScreen({ navigation }: Props) {
             <Text style={styles.footerLink}>verso</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => navigation.navigate('Stillwater')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.footerLink}>stillwater</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.7}
           >

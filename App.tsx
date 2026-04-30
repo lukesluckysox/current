@@ -20,6 +20,7 @@ import VersoScreen from './src/screens/VersoScreen';
 import LinesScreen from './src/screens/LinesScreen';
 import LineDetailScreen from './src/screens/LineDetailScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import StillwaterScreen from './src/screens/StillwaterScreen';
 
 export type LineFilter = {
   kind: 'tide' | 'terrain' | 'constellation' | 'mode' | 'topic';
@@ -45,6 +46,7 @@ export type RootStackParamList = {
   Lines: { filter?: LineFilter } | undefined;
   LineDetail: { lineId: number };
   Settings: undefined;
+  Stillwater: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -84,6 +86,7 @@ function AppNavigator() {
         <Stack.Screen name="Lines" component={LinesScreen} />
         <Stack.Screen name="LineDetail" component={LineDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Stillwater" component={StillwaterScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
