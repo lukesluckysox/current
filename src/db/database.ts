@@ -13,6 +13,7 @@ export type LineMode =
   | 'aphorism'        // verso aphorism mode
   | 'contradiction'   // verso contradiction mode
   | 'aside'           // verso aside mode — slanted, idiosyncratic wit
+  | 'anchor'          // stillwater anchor — a grounding line for a moment of pull
   // Legacy modes — no longer offered for new shaping, but preserved on
   // existing rows so old lines remain readable in Lines/LineDetail.
   | 'complete'

@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 
+export { Drawer } from './Drawer';
+
 // ─── Responsive layout ───────────────────────────────────────────────────────
 //
 // Swell is mobile-first; on desktop/tablet we constrain content to a centered
@@ -104,9 +106,13 @@ type HeaderProps = {
   title: string;
   onBack?: () => void;
   rightAction?: React.ReactNode;
+  /** When provided, renders a hamburger (≡) icon in the right slot that
+   *  opens the app drawer. Sits alongside `rightAction` when both are given. */
+  onMenu?: () => void;
 };
 
-export function Header({ title, onBack, rightAction }: HeaderProps) {
+export function Header({ title, onBack, rightAction, onMenu }: HeaderProps) {
+  const hasExtra = Boolean(rightAction || onMenu);
   return (
     <View style={styles.header}>
       {onBack ? (
@@ -117,7 +123,25 @@ export function Header({ title, onBack, rightAction }: HeaderProps) {
         <View style={styles.headerBack} />
       )}
       <Text style={styles.headerTitle}>{title}</Text>
-      <View style={styles.headerRight}>{rightAction}</View>
+      {hasExtra ? (
+        <View style={styles.headerRightCluster}>
+          {rightAction}
+          {onMenu && (
+            <TouchableOpacity
+              onPress={onMenu}
+              style={styles.headerMenuButton}
+              activeOpacity={0.7}
+              accessibilityLabel="open menu"
+              testID="header-menu"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.headerMenuIcon}>≡</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <View style={styles.headerBack} />
+      )}
     </View>
   );
 }
@@ -1283,6 +1307,23 @@ const styles = StyleSheet.create({
     width: 40,
     alignItems: 'flex-end',
     justifyContent: 'center',
+  },
+  headerRightCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 40,
+  },
+  headerMenuButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    marginLeft: Spacing.xs,
+  },
+  headerMenuIcon: {
+    color: Colors.sand,
+    fontSize: FontSizes.xl,
+    fontFamily: Fonts.sans,
+    lineHeight: FontSizes.xl + 2,
   },
   inputContainer: {
     backgroundColor: Colors.card,

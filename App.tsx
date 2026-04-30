@@ -13,6 +13,7 @@ import {
 import { Colors, Fonts } from './src/theme';
 import { initDatabase } from './src/db/database';
 import { AuthProvider, useAuth } from './src/AuthContext';
+import { ThemeProvider, useTheme } from './src/ThemeContext';
 import LoginScreen from './src/screens/LoginScreen';
 
 import DriftScreen from './src/screens/DriftScreen';
@@ -20,6 +21,7 @@ import VersoScreen from './src/screens/VersoScreen';
 import LinesScreen from './src/screens/LinesScreen';
 import LineDetailScreen from './src/screens/LineDetailScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import StillwaterScreen from './src/screens/StillwaterScreen';
 
 export type LineFilter = {
   kind: 'tide' | 'terrain' | 'constellation' | 'mode' | 'topic';
@@ -45,32 +47,40 @@ export type RootStackParamList = {
   Lines: { filter?: LineFilter } | undefined;
   LineDetail: { lineId: number };
   Settings: undefined;
+  Stillwater: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const NAV_THEME = {
-  dark: true,
-  colors: {
-    primary: Colors.amber,
-    background: Colors.deepNavy,
-    card: Colors.navy,
-    text: Colors.saltWhite,
-    border: Colors.border,
-    notification: Colors.amber,
-  },
-  fonts: {
-    regular: { fontFamily: Fonts.sans as string, fontWeight: '400' as const },
-    medium: { fontFamily: Fonts.sans as string, fontWeight: '500' as const },
-    bold: { fontFamily: Fonts.sans as string, fontWeight: '700' as const },
-    heavy: { fontFamily: Fonts.sans as string, fontWeight: '900' as const },
-  },
-};
+// NAV_THEME is built per-render so it picks up the live `Colors` values
+// after a scheme swap. AppNavigator is also remounted with `key={scheme}`
+// so frozen StyleSheet.create outputs in screens/components rebuild from
+// the new palette.
+function buildNavTheme(scheme: 'light' | 'dark') {
+  return {
+    dark: scheme === 'dark',
+    colors: {
+      primary: Colors.amber,
+      background: Colors.deepNavy,
+      card: Colors.navy,
+      text: Colors.saltWhite,
+      border: Colors.border,
+      notification: Colors.amber,
+    },
+    fonts: {
+      regular: { fontFamily: Fonts.sans as string, fontWeight: '400' as const },
+      medium: { fontFamily: Fonts.sans as string, fontWeight: '500' as const },
+      bold: { fontFamily: Fonts.sans as string, fontWeight: '700' as const },
+      heavy: { fontFamily: Fonts.sans as string, fontWeight: '900' as const },
+    },
+  };
+}
 
 function AppNavigator() {
+  const { scheme } = useTheme();
   return (
-    <NavigationContainer theme={NAV_THEME}>
-      <StatusBar barStyle="light-content" />
+    <NavigationContainer theme={buildNavTheme(scheme)}>
+      <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
       <Stack.Navigator
         initialRouteName="Drift"
         screenOptions={{
@@ -84,6 +94,7 @@ function AppNavigator() {
         <Stack.Screen name="Lines" component={LinesScreen} />
         <Stack.Screen name="LineDetail" component={LineDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Stillwater" component={StillwaterScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -119,7 +130,15 @@ function AuthGate() {
     );
   }
   // 'authenticated' or 'disabled' — render the app.
-  return <AppNavigator />;
+  return <ThemedAppNavigator />;
+}
+
+// Remount the entire navigator when the scheme flips so every screen's
+// `StyleSheet.create({ ... Colors.X ... })` is re-evaluated against the
+// new palette. Cheap on this app's surface count.
+function ThemedAppNavigator() {
+  const { scheme } = useTheme();
+  return <AppNavigator key={scheme} />;
 }
 
 export default function App() {
@@ -154,9 +173,11 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <AuthGate />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

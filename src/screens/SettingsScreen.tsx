@@ -17,7 +17,7 @@ import {
   countSeedLines,
   deleteSeedLines,
 } from '../db/database';
-import { Header, Workbench } from '../components';
+import { Header, Workbench, Drawer } from '../components';
 import { RootStackParamList } from '../../App';
 import { useAuth } from '../AuthContext';
 
@@ -28,6 +28,7 @@ type Props = {
 export default function SettingsScreen({ navigation }: Props) {
   const auth = useAuth();
   const [seedCount, setSeedCount] = useState<number>(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,7 +79,12 @@ export default function SettingsScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <Header title="Settings" onBack={() => navigation.goBack()} />
+      <Header
+        title="Settings"
+        onBack={() => navigation.goBack()}
+        onMenu={() => setMenuOpen(true)}
+      />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <Workbench size="normal">

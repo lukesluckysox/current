@@ -19,7 +19,7 @@ import {
 import {
   addLine, getLines, Line,
 } from '../db/database';
-import { Header, SwellInput, WaveForecast, Workbench, useIsDesktop } from '../components';
+import { Header, SwellInput, WaveForecast, Workbench, useIsDesktop, Drawer } from '../components';
 import { RootStackParamList } from '../../App';
 import { computeForecast, Forecast } from '../forecast';
 import {
@@ -44,6 +44,7 @@ export default function DriftScreen({ navigation }: Props) {
   const [savedFlash, setSavedFlash] = useState(false);
   const [savedToday, setSavedToday] = useState(0);
   const [allLines, setAllLines] = useState<Line[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const surfacedOpacity = useRef(new Animated.Value(0)).current;
 
   // Live surf-data resonance. We fetch real marine/wind conditions for a
@@ -275,15 +276,9 @@ export default function DriftScreen({ navigation }: Props) {
     >
       <Header
         title="Current"
-        rightAction={
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Lines')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.headerIcon}>≡</Text>
-          </TouchableOpacity>
-        }
+        onMenu={() => setMenuOpen(true)}
       />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <ScrollView
         style={styles.scroll}
@@ -431,6 +426,12 @@ export default function DriftScreen({ navigation }: Props) {
             <Text style={styles.footerLink}>verso</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => navigation.navigate('Stillwater')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.footerLink}>stillwater</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.7}
           >
@@ -529,11 +530,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
-  },
-  headerIcon: {
-    color: Colors.sand,
-    fontSize: FontSizes.xl,
-    fontFamily: Fonts.sans,
   },
   driftLabel: {
     color: Colors.muted,

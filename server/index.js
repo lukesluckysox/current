@@ -119,13 +119,26 @@ function contextBlock(ctx) {
   return `\nContext (silent — do not name, quote, or list these): ${parts.join(' · ')}.`;
 }
 
-function userPrompt(type, seed, ctx) {
+// intent: how the seed should be used.
+//   'seed'    — hold the fragment underneath; the new line is inspired by it,
+//              not derived from it. Voice and territory carry over; the
+//              fragment itself does not appear on the line.
+//   'reshape' — convert the user's own words into the requested form.
+//              Their meaning is the raw material; the line should clearly be
+//              about the same thing they wrote, recast into the contract of
+//              the chosen mode.
+function userPrompt(type, seed, ctx, intent = 'seed') {
   const trimmed = (seed || '').trim().slice(0, MAX_SEED_LEN);
   const hasSeed = trimmed.length > 0;
   const ctxClause = contextBlock(ctx);
-  const seedClause = hasSeed
-    ? `\nHold this fragment in mind without quoting, naming, or paraphrasing it directly — let it sit underneath the line: ${trimmed}`
-    : '\nNo seed was provided. Use the context (if any) and a small concrete anchor — kitchen, weather, transit, body, tool, room. Do not address or assume anything about the reader.';
+  let seedClause;
+  if (!hasSeed) {
+    seedClause = '\nNo seed was provided. Use the context (if any) and a small concrete anchor — kitchen, weather, transit, body, tool, room. Do not address or assume anything about the reader.';
+  } else if (intent === 'reshape') {
+    seedClause = `\nReshape the speaker's own words into the contract above. Keep their meaning, their subject, the specific thing they were pointing at. Change the form. The new line should clearly be about the same thing the fragment is about — not a tangent, not a related idea, the same idea recast. You may borrow concrete nouns from the fragment when they sharpen the line; otherwise prefer fresh, more specific images. Do not quote the fragment verbatim. Do not add a new topic.\n\nFragment to reshape:\n${trimmed}`;
+  } else {
+    seedClause = `\nHold this fragment in mind without quoting, naming, or paraphrasing it directly — let it sit underneath the line: ${trimmed}`;
+  }
 
   switch (type) {
     case 'aphorism':
@@ -173,6 +186,8 @@ function userPrompt(type, seed, ctx) {
       return 'Write one short line.' + ctxClause + seedClause;
   }
 }
+
+const VALID_INTENTS = new Set(['seed', 'reshape']);
 
 // Mode-aware micro-instructions appended to each edit op. The user-visible
 // label (clearer / sharper / stranger) stays the same, but the model is
@@ -427,12 +442,18 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
   const type = String(body.type || '').toLowerCase();
   const seed = typeof body.seed === 'string' ? body.seed : '';
   const ctx = body.context && typeof body.context === 'object' ? body.context : null;
+  // Intent governs how the seed is used: 'seed' (the default, current
+  // behavior — inspired by) vs 'reshape' (convert the user's own words into
+  // the requested mode). Falls back to 'seed' if the seed is empty.
+  const requestedIntent = String(body.intent || 'seed').toLowerCase();
+  const intent = VALID_INTENTS.has(requestedIntent) ? requestedIntent : 'seed';
   if (!VALID_TYPES.has(type)) return res.status(400).json({ error: 'invalid_type' });
   if (seed.length > MAX_SEED_LEN) return res.status(400).json({ error: 'seed_too_long' });
+  const effectiveIntent = seed.trim().length > 0 ? intent : 'seed';
 
   try {
     let line = await complete(
-      [{ role: 'user', content: userPrompt(type, seed, ctx) }],
+      [{ role: 'user', content: userPrompt(type, seed, ctx, effectiveIntent) }],
     );
     // Anti-cliché: if the first pass smells generic, regenerate once with a
     // sharper instruction. Single retry — keeps latency bounded.
@@ -442,7 +463,7 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
           [{
             role: 'user',
             content:
-              userPrompt(type, seed, ctx) +
+              userPrompt(type, seed, ctx, effectiveIntent) +
               '\nThe previous attempt was too generic, motivational, or therapy-flavored. Rewrite from the pressure point: the contradiction, the avoided admission, or the almost-said thing. Specific noun, specific verb. No "remember", "embrace", "journey", "trauma", "boundaries".',
           }],
         );
@@ -451,7 +472,7 @@ app.post('/api/generate', maybeRequireAuth, rateLimit, async (req, res) => {
       }
     }
     if (!line) return res.status(502).json({ error: 'empty_response' });
-    return res.json({ line, type, seeded: seed.trim().length > 0 });
+    return res.json({ line, type, seeded: seed.trim().length > 0, intent: effectiveIntent });
   } catch (err) {
     const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
     console.warn(`[generate] type=${type} status=${status} err=${err?.name || 'unknown'}`);
@@ -509,6 +530,74 @@ app.post('/api/generate-breaks', maybeRequireAuth, rateLimit, async (req, res) =
   } catch (err) {
     const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
     console.warn(`[generate-breaks] board=${board} status=${status} err=${err?.name || 'unknown'}`);
+    return res.status(status === 504 ? 504 : 502).json({ error: 'generation_failed' });
+  }
+});
+
+// ─── /api/anchor ─────────────────────────────────────────────────────────────
+//
+// Stillwater grounding. Returns one short anchor line for a speaker who feels
+// pulled — either toward compliance ("being pulled under"), toward defiant
+// rebellion ("kicking against the current"), or just trying to hold the line.
+// Reuses the same client, sanitize(), and cliché filter as /api/generate; the
+// only thing that differs is the prompt contract.
+
+const VALID_PULLS = new Set(['under', 'holding', 'against']);
+const PULL_DESCRIPTIONS = {
+  under:    'being pulled under — absorbing the room, performing fluency, agreeing in advance, losing the thread of who they were before they walked in',
+  holding:  'holding the line — trying to stay porous to real things and closed to manufactured ones',
+  against:  'kicking against the current — still inside the argument, still feeding what they reject by refusing it loudly',
+};
+
+function anchorPrompt(pull, custom) {
+  const trimmed = (custom || '').trim().slice(0, MAX_SEED_LEN);
+  const hasCustom = trimmed.length > 0;
+  const pullClause = `The speaker is ${PULL_DESCRIPTIONS[pull] || PULL_DESCRIPTIONS.holding}.`;
+  const customClause = hasCustom
+    ? `\nWhat is pulling at them, in their own words: ${trimmed}\n\nRespond directly to this. The line should clearly be about the situation they named — not an abstract sibling, not a tangent. Speak to what is actually happening for them, in their texture, with one specific detail from the world they described or one they could plausibly recognize. Do not quote them verbatim. Do not name them. Do not narrate their feelings back to them.`
+    : '\nNo specifics were given. Stay general but particular: a small concrete detail (room, weather, body, tool, hour) carries the line.';
+  return [
+    'Write one anchor line.',
+    'Contract: a quiet grounding statement for someone who is calibrating between two failure modes — absorbing the room or rebelling against it. Not advice. Not a reassurance. A line that lets the speaker step out of the pull without resolving it for them.',
+    'Voice: settled, dry, lightly wry, never preachy. A trusted friend who also sees clearly. Concrete. First or second person both fine; second-person commands forbidden.',
+    'Shape: one line, under 18 words, declarative or observational. No exclamations. No rhetorical questions. No motivational cadence. No therapy vocabulary. No "remember", "embrace", "journey", "warrior", "trauma", "boundaries", "showing up", "authenticity".',
+    'Test: if it could appear on a self-help poster, rewrite it. If it tells the speaker how to feel, rewrite it. If it sounds like meditation-app copy, rewrite it. The line should feel overheard, not announced.',
+    pullClause,
+    customClause,
+  ].join(' ');
+}
+
+app.post('/api/anchor', maybeRequireAuth, rateLimit, async (req, res) => {
+  if (!client) return res.status(503).json({ error: 'llm_unavailable' });
+  const body = req.body || {};
+  const pull = String(body.pull || 'holding').toLowerCase();
+  const custom = typeof body.custom === 'string' ? body.custom : '';
+  if (!VALID_PULLS.has(pull)) return res.status(400).json({ error: 'invalid_pull' });
+  if (custom.length > MAX_SEED_LEN) return res.status(400).json({ error: 'custom_too_long' });
+
+  try {
+    let line = await complete(
+      [{ role: 'user', content: anchorPrompt(pull, custom) }],
+    );
+    if (line && isCliche(line)) {
+      try {
+        line = await complete(
+          [{
+            role: 'user',
+            content:
+              anchorPrompt(pull, custom) +
+              '\nThe previous attempt was too generic, motivational, or therapy-flavored. Rewrite drier and more specific. One concrete detail. No "remember", "embrace", "journey", "trauma", "boundaries".',
+          }],
+        );
+      } catch {
+        // keep the first line if retry fails
+      }
+    }
+    if (!line) return res.status(502).json({ error: 'empty_response' });
+    return res.json({ line, pull });
+  } catch (err) {
+    const status = err?.status || (err?.name === 'AbortError' ? 504 : 500);
+    console.warn(`[anchor] pull=${pull} status=${status} err=${err?.name || 'unknown'}`);
     return res.status(status === 504 ? 504 : 502).json({ error: 'generation_failed' });
   }
 });

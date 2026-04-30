@@ -1,14 +1,38 @@
 import { Platform } from 'react-native';
 
-// Palette: muted turquoise / teal / ocean.
-// Semantic names are preserved (amber, sand, navy) so the rest of the app
-// continues to compile, but their hex values have been shifted into a
-// low-saturation ocean family — sea-glass, deep teal, dusk ocean, mist —
-// for a quieter, more mesmerizing surface than the previous blue-and-gold.
-// Hues are deliberately pulled toward 185–200° (cool teal/aqua) and away from
-// 150–170° (which can read as olive/khaki/yellow against a dark surface).
-// Saturation is kept low; lightness does the lifting.
-export const Colors = {
+// ─── Palettes ────────────────────────────────────────────────────────────────
+//
+// Two palettes share one schema. Every screen reads from `Colors`, which is a
+// live pointer that swaps when the theme changes (see `setColorScheme`). The
+// app remounts on toggle so frozen `StyleSheet.create` outputs rebuild from
+// the new palette.
+//
+// Semantic role names (deepNavy, navy, card, sand, amber, etc.) are preserved
+// from the original ocean palette so existing styles compile unchanged. Their
+// hexes shift between schemes; the role each one plays does not.
+//
+// Dark — abyssal teal, kelp shadow, sea glass. The room at night.
+// Light — Waikiki shallows: luminous tropical turquoise on top, reef visible
+//         beneath. Cool aqua surfaces, kelp/coral tones for chrome.
+
+type Palette = {
+  deepNavy: string;
+  navy: string;
+  card: string;
+  cardAlt: string;
+  border: string;
+  borderLight: string;
+  sand: string;
+  sandLight: string;
+  saltWhite: string;
+  amber: string;
+  amberLight: string;
+  muted: string;
+  mutedLight: string;
+  error: string;
+};
+
+export const darkPalette: Palette = {
   deepNavy: '#071A1F',     // abyssal teal — app background
   navy: '#0E2429',         // dusk ocean — nav surfaces
   card: '#143036',         // submerged stone — primary surface
@@ -24,6 +48,54 @@ export const Colors = {
   mutedLight: '#86A2A6',   // overcast
   error: '#A35E50',        // rust coral, desaturated
 };
+
+// Waikiki shallows — looking down through clear tropical water onto reef.
+// Background is the bright turquoise of two-foot water at noon. Borders and
+// muted text are kelp/coral tones, the shapes you see when you squint past
+// the surface. Accent is a saturated reef teal — the deep channel between
+// reef heads. Body text is near-black so the page reads like ink on water.
+export const lightPalette: Palette = {
+  deepNavy: '#A6E5DE',     // shallow Waikiki turquoise — app background
+  navy: '#7FD4CB',         // a step deeper — nav surfaces, headers
+  card: '#C1ECE6',         // foam-lifted shallow — primary surface
+  cardAlt: '#D5F2EE',      // bleached lagoon — secondary surface
+  border: '#5FB8AE',       // reef edge visible through water
+  borderLight: '#88CFC6',  // softer reef shadow
+  sand: '#1F4F4A',         // wet kelp — primary text accent
+  sandLight: '#2E6963',    // dimmer kelp
+  saltWhite: '#0B2422',    // ink on water — primary readable text
+  amber: '#0E5A55',        // deep reef channel — primary accent
+  amberLight: '#1A7A72',   // lifted channel teal
+  muted: '#4F7B76',        // overcast lagoon
+  mutedLight: '#739E99',   // distant reef haze
+  error: '#A8463A',        // coral red, desaturated to fit the lagoon
+};
+
+// ─── Live Colors object ──────────────────────────────────────────────────────
+//
+// We expose a mutable `Colors` object whose properties match a Palette. On
+// theme change, `setColorScheme` overwrites every key on this object so any
+// future read sees the new value. Existing `StyleSheet.create` outputs are
+// frozen, but the App-level remount-on-toggle (App.tsx, key={scheme}) rebuilds
+// every stylesheet from the live values.
+
+export type ColorScheme = 'light' | 'dark';
+
+export const Colors: Palette = { ...darkPalette };
+
+let activeScheme: ColorScheme = 'dark';
+
+export function getColorScheme(): ColorScheme {
+  return activeScheme;
+}
+
+export function setColorScheme(scheme: ColorScheme): void {
+  const next = scheme === 'light' ? lightPalette : darkPalette;
+  (Object.keys(next) as Array<keyof Palette>).forEach((k) => {
+    Colors[k] = next[k];
+  });
+  activeScheme = scheme;
+}
 
 export const Fonts = {
   serif: 'CormorantGaramond_500Medium',
@@ -74,7 +146,9 @@ export const TIDE_STATES = [
 
 // Tide colors stay inside the muted ocean family — variations of teal,
 // sea-glass, kelp, and mist. All values sit in the cool ocean range; no
-// warm/yellow cast anywhere on the atlas.
+// warm/yellow cast anywhere on the atlas. These are visible on both palettes
+// because they are mid-tone teals — they read as deeper water on light mode
+// and lifted highlights on dark mode.
 export const TIDE_COLORS: Record<string, string> = {
   'glass water': '#5C9AA0',         // pale cool sea glass
   'returning swell': '#3A7880',     // deeper cool turquoise
