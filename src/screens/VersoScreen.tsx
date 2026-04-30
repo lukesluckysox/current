@@ -21,7 +21,7 @@ import {
 } from '../db/database';
 import { Header, Pill, Workbench } from '../components';
 import { RootStackParamList } from '../../App';
-import { generateLine, GenerateBreak, EditOp, editLine } from '../llm';
+import { generateLine, GenerateBreak, EditOp, editLine, GenerateIntent } from '../llm';
 import {
   buildLexicon, findCurrents, dominantBreak,
   readBreakLocal, restraint as readRestraint,
@@ -85,6 +85,11 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   // Free-text shaping canvas. Same UI for all four modes.
   const [shaped, setShaped] = useState(seedContent ?? '');
+  // How the canvas should be used when the speaker takes the drop.
+  //   'seed'    — hold their words underneath; line is inspired by them.
+  //   'reshape' — convert their words into the chosen mode.
+  // Only meaningful when the canvas has content; the toggle hides otherwise.
+  const [intent, setIntent] = useState<GenerateIntent>('seed');
   const [topic, setTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -196,8 +201,13 @@ export default function VersoScreen({ navigation, route }: Props) {
     // topic, then any nav-time seed. A single word/topic/fragment is enough.
     const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
     const previous = shaped;
+    // Reshape only applies when the canvas itself holds the seed. If the seed
+    // came from a topic chip or nav-time fragment (not currently in the box),
+    // fall back to 'seed' so the user's own words aren't silently rewritten.
+    const effectiveIntent: GenerateIntent =
+      intent === 'reshape' && shaped.trim().length > 0 ? 'reshape' : 'seed';
     try {
-      const result = await generateLine(mode, seed, contextPacket);
+      const result = await generateLine(mode, seed, contextPacket, effectiveIntent);
       if (result.ok) {
         setShaped(result.line);
       } else {
@@ -390,6 +400,23 @@ export default function VersoScreen({ navigation, route }: Props) {
               </Text>
             </TouchableOpacity>
           </View>
+          {shaped.trim().length > 0 && (
+            <View style={styles.intentRow} testID={`intent-row-${mode}`}>
+              <Text style={styles.intentHint}>your words →</Text>
+              <View style={styles.intentPills}>
+                <Pill
+                  label="seed"
+                  active={intent === 'seed'}
+                  onPress={() => setIntent('seed')}
+                />
+                <Pill
+                  label="reshape"
+                  active={intent === 'reshape'}
+                  onPress={() => setIntent('reshape')}
+                />
+              </View>
+            </View>
+          )}
           {generateError && (
             <Text style={styles.generateError}>{generateError}</Text>
           )}
@@ -615,6 +642,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
+  },
+  intentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: Spacing.sm,
+  },
+  intentHint: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginRight: Spacing.sm,
+  },
+  intentPills: {
+    flexDirection: 'row',
   },
   generateError: {
     color: Colors.muted,

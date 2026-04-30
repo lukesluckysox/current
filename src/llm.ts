@@ -68,15 +68,23 @@ async function call<T>(
   }
 }
 
+// How the seed should be used by /api/generate.
+//   'seed'    — hold the fragment underneath; new line is inspired by it.
+//   'reshape' — convert the user's own words into the requested mode.
+// When seed is empty, the server falls back to 'seed' regardless.
+export type GenerateIntent = 'seed' | 'reshape';
+
 export async function generateLine(
   type: GenerateBreak,
   seed?: string,
   context?: GenerateContext,
+  intent: GenerateIntent = 'seed',
 ): Promise<{ ok: true; line: string } | { ok: false; error: GenerateError }> {
   const result = await call<{ line?: string }>('/api/generate', {
     type,
     seed: seed?.slice(0, 280) ?? '',
     context: context ?? null,
+    intent,
   });
   if (!result.ok) return result;
   const line = (result.data.line || '').trim();
