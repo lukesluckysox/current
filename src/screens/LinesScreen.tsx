@@ -10,7 +10,7 @@ import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
 import { getLines, deleteLine, Line, LineMode } from '../db/database';
-import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard, Workbench } from '../components';
+import { Header, EmptyState, Pill, TidalChart, TidalChartMarker, CurrentReadingCard, Workbench, Drawer } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 import { readCurrent } from '../forecast';
 import { confirm } from '../confirm';
@@ -114,6 +114,7 @@ export default function LinesScreen({ navigation, route }: Props) {
   const [modeFilter, setModeFilter] = useState<'all' | LineMode>('all');
   const [tagFilter, setTagFilter] = useState<LineFilter | null>(route.params?.filter ?? null);
   const [page, setPage] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     const data = await getLines();
@@ -175,7 +176,12 @@ export default function LinesScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <Header title="Depth Stack" onBack={() => navigation.goBack()} />
+      <Header
+        title="Depth Stack"
+        onBack={() => navigation.goBack()}
+        onMenu={() => setMenuOpen(true)}
+      />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Workbench size="wide">

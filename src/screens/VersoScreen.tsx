@@ -19,7 +19,7 @@ import {
 import {
   addLine, getLines, getConfig, setConfig, Line,
 } from '../db/database';
-import { Header, Pill, Workbench } from '../components';
+import { Header, Pill, Workbench, Drawer } from '../components';
 import { RootStackParamList } from '../../App';
 import { generateLine, GenerateBreak, EditOp, editLine, GenerateIntent } from '../llm';
 import {
@@ -90,6 +90,7 @@ export default function VersoScreen({ navigation, route }: Props) {
   //   'reshape' — convert their words into the chosen mode.
   // Only meaningful when the canvas has content; the toggle hides otherwise.
   const [intent, setIntent] = useState<GenerateIntent>('seed');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
   const [customTopic, setCustomTopic] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -316,15 +317,9 @@ export default function VersoScreen({ navigation, route }: Props) {
       <Header
         title="Verso"
         onBack={() => navigation.goBack()}
-        rightAction={
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Lines')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.headerIcon}>≡</Text>
-          </TouchableOpacity>
-        }
+        onMenu={() => setMenuOpen(true)}
       />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -528,11 +523,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.deepNavy,
-  },
-  headerIcon: {
-    color: Colors.sand,
-    fontSize: FontSizes.xl,
-    fontFamily: Fonts.sans,
   },
   modeRow: {
     flexDirection: 'row',

@@ -18,7 +18,7 @@ import {
   toggleLineFavorite,
   Line,
 } from '../db/database';
-import { Header, Workbench } from '../components';
+import { Header, Workbench, Drawer } from '../components';
 import { RootStackParamList, LineFilter } from '../../App';
 
 type Props = {
@@ -86,6 +86,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
   const { lineId } = route.params;
   const [line, setLine] = useState<Line | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     const l = await getLineById(lineId);
@@ -181,7 +182,12 @@ export default function LineDetailScreen({ navigation, route }: Props) {
   if (!line) {
     return (
       <View style={styles.container}>
-        <Header title="Line" onBack={() => navigation.goBack()} />
+        <Header
+          title="Line"
+          onBack={() => navigation.goBack()}
+          onMenu={() => setMenuOpen(true)}
+        />
+        <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
         <View style={styles.missing}>
           <Text style={styles.missingText}>this line has slipped away</Text>
         </View>
@@ -197,6 +203,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
       <Header
         title="Line"
         onBack={() => navigation.goBack()}
+        onMenu={() => setMenuOpen(true)}
         rightAction={
           <TouchableOpacity
             onPress={handleToggleFavorite}
@@ -208,6 +215,7 @@ export default function LineDetailScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         }
       />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <Workbench size="narrow">

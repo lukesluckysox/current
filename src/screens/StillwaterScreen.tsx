@@ -12,7 +12,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Fonts, FontSizes, Spacing, Radius } from '../theme';
-import { Header, SwellInput, Workbench, useIsDesktop } from '../components';
+import { Header, SwellInput, Workbench, useIsDesktop, Drawer } from '../components';
 import { addLine, getLines, Line } from '../db/database';
 import { generateAnchor, AnchorPull } from '../llm';
 import { RootStackParamList } from '../../App';
@@ -94,6 +94,7 @@ export default function StillwaterScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [recentAnchors, setRecentAnchors] = useState<Line[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const recentRef = useRef<string[]>([]);
   const opacity = useRef(new Animated.Value(1)).current;
 
@@ -171,7 +172,9 @@ export default function StillwaterScreen({ navigation }: Props) {
       <Header
         title="stillwater"
         onBack={() => navigation.goBack()}
+        onMenu={() => setMenuOpen(true)}
       />
+      <Drawer visible={menuOpen} onClose={() => setMenuOpen(false)} />
       <ScrollView
         style={styles.scroll}
         keyboardShouldPersistTaps="handled"
