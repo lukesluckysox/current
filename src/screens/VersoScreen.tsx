@@ -96,6 +96,10 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState<EditOp | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  // What the user actually typed before the twist replaced it. Shown as a
+  // small caption above the canvas so a cryptic morph still references the
+  // source thought. Cleared when the user edits the canvas or saves the line.
+  const [twistedFrom, setTwistedFrom] = useState<string | null>(null);
   const [allLines, setAllLines] = useState<Line[]>([]);
   const [styleHints, setStyleHints] = useState<StyleHints>(emptyStyleHints());
   const [lastFeedback, setLastFeedback] = useState<ResonanceVote | null>(null);
@@ -137,6 +141,7 @@ export default function VersoScreen({ navigation, route }: Props) {
     setShaped('');
     setTopic(null);
     setCustomTopic('');
+    setTwistedFrom(null);
     navigation.navigate('Lines');
   }
 
@@ -202,10 +207,14 @@ export default function VersoScreen({ navigation, route }: Props) {
     // topic, then any nav-time seed. A single word/topic/fragment is enough.
     const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
     const previous = shaped;
+    // Only the canvas itself counts as a "twist source" — topic chips and
+    // nav-time seeds aren't the user's own words.
+    const twistSource = shaped.trim() ? shaped.trim() : null;
     try {
       const result = await generateLine(mode, seed, contextPacket);
       if (result.ok) {
         setShaped(result.line);
+        setTwistedFrom(twistSource);
       } else {
         const fallback = localFallback(mode, previous.trim() || null, voiceProfile);
         setShaped(fallback);
@@ -396,9 +405,31 @@ export default function VersoScreen({ navigation, route }: Props) {
           <Text style={styles.seedState} testID={`seed-state-${mode}`}>
             {seedState}
           </Text>
+          {twistedFrom && (
+            <View style={styles.twistedFromRow} testID="twisted-from">
+              <Text style={styles.twistedFromLabel}>twisted from</Text>
+              <Text style={styles.twistedFromText} numberOfLines={3}>
+                {twistedFrom}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setTwistedFrom(null)}
+                style={styles.twistedFromDismiss}
+                accessibilityLabel="hide original"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.twistedFromDismissText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <TextInput
             value={shaped}
-            onChangeText={(t) => { setShaped(t.slice(0, 280)); if (generateError) setGenerateError(null); }}
+            onChangeText={(t) => {
+              setShaped(t.slice(0, 280));
+              if (generateError) setGenerateError(null);
+              // Once the user edits the canvas, the captioned "twisted from"
+              // is no longer the source of what they're looking at.
+              if (twistedFrom) setTwistedFrom(null);
+            }}
             placeholder={placeholder}
             placeholderTextColor={Colors.muted}
             style={styles.writeInput}
@@ -616,6 +647,43 @@ const build_styles = () => StyleSheet.create({
     fontFamily: Fonts.serifItalic,
     fontSize: FontSizes.xs,
     marginBottom: Spacing.sm,
+  },
+  twistedFromRow: {
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.amber,
+    paddingLeft: Spacing.sm,
+    paddingRight: Spacing.lg,
+    marginBottom: Spacing.sm,
+    position: 'relative',
+  },
+  twistedFromLabel: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: FontSizes.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  twistedFromText: {
+    color: Colors.muted,
+    fontFamily: Fonts.serifItalic,
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  twistedFromDismiss: {
+    position: 'absolute',
+    top: -2,
+    right: 0,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  twistedFromDismissText: {
+    color: Colors.muted,
+    fontFamily: Fonts.sans,
+    fontSize: 18,
+    lineHeight: 18,
   },
   writeInput: {
     color: Colors.saltWhite,
