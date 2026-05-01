@@ -83,12 +83,22 @@ export default function VersoScreen({ navigation, route }: Props) {
 
   const [mode, setMode] = useState<VersoMode>(initialMode);
 
-  // Free-text shaping canvas. Same UI for all four modes.
+  // Two-layer canvas state:
+  //   userSeed — the speaker's own typed line. Source of truth for every
+  //              "take the drop" twist regardless of which mode is active.
+  //              Persists across mode switches so paradox/aphorism/etc. all
+  //              twist from the same original thought, not from the previous
+  //              tool's output.
+  //   shaped   — what's currently displayed in the big canvas. Equals
+  //              userSeed while the user is typing; becomes the LLM's twist
+  //              after "take the drop"; reverts to userSeed on mode switch
+  //              so each tool starts from the user's line.
   //
   // Behavior of "take the drop":
-  //   canvas empty  — LLM writes a fresh line in the chosen mode (inspire).
-  //   canvas filled — LLM twists the speaker's own words into the mode.
-  // No toggle; the canvas presence is the signal.
+  //   userSeed empty — LLM writes a fresh line in the chosen mode (inspire).
+  //   userSeed set   — LLM twists userSeed into the chosen mode.
+  // No toggle; the seed presence is the signal.
+  const [userSeed, setUserSeed] = useState(seedContent ?? '');
   const [shaped, setShaped] = useState(seedContent ?? '');
   const [menuOpen, setMenuOpen] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
@@ -105,8 +115,27 @@ export default function VersoScreen({ navigation, route }: Props) {
   const [lastFeedback, setLastFeedback] = useState<ResonanceVote | null>(null);
 
   useEffect(() => {
-    if (seedContent) setShaped(seedContent);
+    if (seedContent) {
+      setUserSeed(seedContent);
+      setShaped(seedContent);
+    }
   }, [seedContent]);
+
+  // When the user switches Verso modes, revert the canvas to their typed
+  // seed so the next "take the drop" twists from their original line
+  // rather than from the previous tool's output. If there's no seed (a
+  // previous fresh-inspire is sitting in the canvas), clear it so the
+  // new mode starts clean. Also drops the "twisted from" caption since
+  // the morph it referenced is gone.
+  useEffect(() => {
+    if (shaped !== userSeed) {
+      setShaped(userSeed);
+      setTwistedFrom(null);
+    }
+    // Intentionally only fires on mode change — we don't want this running
+    // when the user just edited the canvas or took a drop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const load = useCallback(async () => {
     const lines = await getLines();
@@ -139,6 +168,7 @@ export default function VersoScreen({ navigation, route }: Props) {
       topic: t ?? null,
     });
     setShaped('');
+    setUserSeed('');
     setTopic(null);
     setCustomTopic('');
     setTwistedFrom(null);
@@ -203,13 +233,14 @@ export default function VersoScreen({ navigation, route }: Props) {
     setGenerating(true);
     setGenerateError(null);
     setLastFeedback(null);
-    // Seed: prefer canvas (their own thinking), then custom topic, then chosen
-    // topic, then any nav-time seed. A single word/topic/fragment is enough.
-    const seed = (shaped.trim() || customTopic.trim() || topic || seedContent || '').toString();
+    // Seed for the LLM: always prefer the user's typed line (userSeed) so
+    // every tool twists from the same source, not from a previous tool's
+    // output. Fall back to topic chips / nav-time seeds when userSeed is
+    // empty (true "inspire" path).
+    const seed = (userSeed.trim() || customTopic.trim() || topic || seedContent || '').toString();
     const previous = shaped;
-    // Only the canvas itself counts as a "twist source" — topic chips and
-    // nav-time seeds aren't the user's own words.
-    const twistSource = shaped.trim() ? shaped.trim() : null;
+    // The caption shows what the user actually typed.
+    const twistSource = userSeed.trim() ? userSeed.trim() : null;
     try {
       const result = await generateLine(mode, seed, contextPacket);
       if (result.ok) {
@@ -424,10 +455,25 @@ export default function VersoScreen({ navigation, route }: Props) {
           <TextInput
             value={shaped}
             onChangeText={(t) => {
-              setShaped(t.slice(0, 280));
+              const next = t.slice(0, 280);
+              const wasShowingSeed = shaped === userSeed;
+              const wasEmpty = shaped.length === 0;
+              const becameEmpty = next.length === 0;
+              setShaped(next);
+              // userSeed update rules:
+              //  • Canvas was showing the user's seed and they kept editing
+              //    — that's authoring or refining the seed itself.
+              //  • Canvas was empty and they're typing fresh — new seed.
+              //  • Canvas just got cleared to empty — reset the seed too
+              //    so the next "take the drop" inspires fresh and a mode
+              //    switch doesn't surprise them by restoring an old seed.
+              //  • Otherwise (typing into a morph) — refinement only;
+              //    keep userSeed so subsequent twists pull from the
+              //    original line.
+              if (wasShowingSeed || wasEmpty || becameEmpty) {
+                setUserSeed(next);
+              }
               if (generateError) setGenerateError(null);
-              // Once the user edits the canvas, the captioned "twisted from"
-              // is no longer the source of what they're looking at.
               if (twistedFrom) setTwistedFrom(null);
             }}
             placeholder={placeholder}
